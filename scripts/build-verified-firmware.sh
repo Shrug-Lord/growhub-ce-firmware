@@ -52,7 +52,13 @@ main() {
   local build_firmware release_firmware
 
   require_file "$FIRMWARE_DIR/platformio.ini"
-  [ -x "$PIO_BIN" ] || die "PlatformIO venv command not found: $PIO_BIN"
+  if [ -x "$PIO_BIN" ]; then
+    :
+  elif command -v "$PIO_BIN" >/dev/null 2>&1; then
+    PIO_BIN="$(command -v "$PIO_BIN")"
+  else
+    die "PlatformIO command not found: $PIO_BIN"
+  fi
 
   raw_version="${VERSION:-}"
   if [ -z "$raw_version" ]; then
