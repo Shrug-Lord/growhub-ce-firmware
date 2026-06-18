@@ -1,0 +1,60 @@
+name: Bug report
+description: Something is broken in CE firmware
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. The more detail you provide here, the faster we can help.
+
+  - type: input
+    id: firmware-version
+    attributes:
+      label: CE firmware version
+      description: Tag, commit SHA, or `<version>` reported in the web UI.
+      placeholder: "e.g. v1.0.0 or 7f3a9c2"
+    validations:
+      required: true
+
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware
+      description: NIWA Growhub model / revision if known. Anything special about your setup.
+      placeholder: "NIWA Growhub, ESP32-D0WDQ6 rev 1.1, default outlets, no CO2 module"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect to happen, what actually happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps that another person could follow on their own device.
+      placeholder: |
+        1. Flash CE firmware via UART
+        2. Connect to AP, set WiFi via captive portal
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: serial-log
+    attributes:
+      label: Serial log (optional but helpful)
+      description: 30–60 lines from `pio device monitor` around the time the bug happened. **Scrub WiFi credentials before pasting** — the captive portal logs them in plaintext.
+      render: text
+
+  - type: input
+    id: broker
+    attributes:
+      label: MQTT broker (if used)
+      description: What broker software + version. Leave blank if running standalone.
+      placeholder: "e.g. Mosquitto 2.0.18 on Raspberry Pi 4"

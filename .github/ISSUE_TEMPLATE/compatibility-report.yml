@@ -1,0 +1,58 @@
+name: Hardware compatibility report
+description: Tell us your NIWA Growhub variant works (or doesn't) with CE firmware
+labels: ["compatibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        We currently verify on a small number of bench units. Help us expand the supported-hardware matrix by reporting your unit.
+
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: Did CE firmware work on your device?
+      options:
+        - Worked end-to-end (UART flash → boot → WiFi → relays → sensors)
+        - Worked partially (please describe what failed)
+        - Did not work at all
+    validations:
+      required: true
+
+  - type: input
+    id: ce-version
+    attributes:
+      label: CE firmware version tested
+      placeholder: "e.g. v1.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: device-model
+    attributes:
+      label: NIWA Growhub model / generation
+      description: Anything written on the case + the stock firmware version it shipped with if known (visible in stock firmware web UI before flashing).
+      placeholder: "e.g. NIWA Growhub, stock firmware 3.9.0V"
+    validations:
+      required: true
+
+  - type: input
+    id: mac-prefix
+    attributes:
+      label: WiFi MAC OUI (first 6 hex chars only)
+      description: Helps us track NIWA hardware variants without exposing your device. Find via UART boot log or `esptool chip-id`.
+      placeholder: "e.g. FCE8C0"
+
+  - type: dropdown
+    id: sensor-board
+    attributes:
+      label: Sensor board variant
+      options:
+        - "SH_NP01_S_134368b_V1.1 (top) + SA-24-B 01.01.0644 (bottom)"
+        - Different variant (please describe in notes)
+        - Unknown / didn't check
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: What worked, what didn't, anything unexpected. Include UART log excerpts (with WiFi credentials scrubbed) if relevant.

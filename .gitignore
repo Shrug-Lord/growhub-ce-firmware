@@ -1,0 +1,39 @@
+# PlatformIO build artifacts
+firmware/.pio/
+firmware/.venv/
+firmware/.platformio-core/
+dist/
+
+# Stock firmware dump (4MB binary)
+niwa-firmware.bin
+stock-backups/
+
+# Built CE firmware image (build artifact)
+firmware/firmware.bin
+
+# Private reverse-engineering workspace
+docs/reverse-engineering/
+
+# Bench-test artifacts
+migration/phase0/tls_spoof.crt
+migration/phase0/tls_spoof.key
+migration/phase0/__pycache__/
+
+# Private purchasing/research artifacts
+docs/hardware/
+
+# Device monitor logs (may contain WiFi credentials in plaintext)
+*.log
+
+# Environment files (credentials)
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Local session context
+plan.md
+
+# OS
+.DS_Store
+Thumbs.db
