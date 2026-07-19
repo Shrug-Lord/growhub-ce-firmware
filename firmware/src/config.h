@@ -12,8 +12,10 @@
 #define DEFAULT_RELAY_OUTLET4_PIN   27
 #define DEFAULT_SENSOR_UART_TX_PIN  17
 #define DEFAULT_SENSOR_UART_RX_PIN  16
-#define DEFAULT_BUTTON_PIN          0
-#define DEFAULT_LED_PIN             2
+#define DEFAULT_BUTTON_PIN          4
+#define DEFAULT_LED_PIN             12
+#define DEFAULT_ERROR_LED_PIN       14
+#define DEFAULT_OPERATION_LED_ENABLED 1
 
 // --- Limits ---
 #define MAX_SSID_LEN        32
@@ -24,6 +26,7 @@
 #define MAX_SNTP_HOST_LEN   64
 #define NUM_RELAY_SLOTS     4
 #define MAX_RELAY_NAME_LEN  16
+#define MAX_OUTLET_LABEL_LEN 32
 
 // --- MQTT defaults ---
 #define DEFAULT_MQTT_PORT       1883
@@ -40,6 +43,7 @@ typedef struct {
     // WiFi AP (auto-generated from MAC if empty)
     char     ap_ssid[MAX_SSID_LEN + 1];
     char     ap_password[MAX_PASSWORD_LEN + 1];
+    uint8_t  keep_ap_active;
 
     // MQTT broker
     char     mqtt_host[MAX_HOSTNAME_LEN + 1];
@@ -51,13 +55,16 @@ typedef struct {
     // Timezone (POSIX TZ string)
     char     timezone[MAX_TIMEZONE_LEN + 1];
 
-    // User-assigned outlet labels. Empty string means unassigned/no label.
+    // User-assigned outlet equipment type. Empty string means assignment=None.
     char     relay_names[NUM_RELAY_SLOTS][MAX_RELAY_NAME_LEN + 1];
+
+    // User-facing outlet label. Empty string means use the Outlet N fallback.
+    char     outlet_labels[NUM_RELAY_SLOTS][MAX_OUTLET_LABEL_LEN + 1];
 
     // Temperature display unit (0=Celsius, 1=Fahrenheit)
     uint8_t  temp_unit;
 
-    // Time source (0=SNTP, 1=Manual browser sync)
+    // Time source (0=SNTP, 1=Manual external sync)
     uint8_t  time_src;
     char     sntp_primary[MAX_SNTP_HOST_LEN + 1];
     char     sntp_secondary[MAX_SNTP_HOST_LEN + 1];
@@ -70,7 +77,9 @@ typedef struct {
     uint8_t  pin_sensor_uart_tx;
     uint8_t  pin_sensor_uart_rx;
     uint8_t  pin_button;
-    uint8_t  pin_led;
+    uint8_t  pin_led;        // blue/green operation LED
+    uint8_t  pin_error_led;  // red malfunction LED
+    uint8_t  operation_led_enabled;
 
     // Sensor calibration offsets
     float    temp_offset;
@@ -97,11 +106,19 @@ const growhub_config_t *config_get(void);
 
 // Save individual config sections back to NVS
 void config_save_wifi(const char *ssid, const char *password);
+void config_save_keep_ap_active(bool keep_active);
 void config_save_mqtt(const char *host, uint16_t port);
 // temp_unit: 0=C, 1=F, -1=no change; time_src: 0=SNTP, 1=Manual, -1=no change
 void config_save_device(const char *name, const char *timezone, int temp_unit, int time_src);
 void config_save_sntp_servers(const char *primary, const char *secondary);
+void config_save_operation_led_enabled(bool enabled);
 void config_save_pins(const growhub_config_t *cfg);
+bool config_normalize_outlet_label(const char *label, char dest[MAX_OUTLET_LABEL_LEN + 1]);
+void config_outlet_label_or_default(int outlet_id, const char *stored, char *out, size_t len);
+bool config_save_outlet_config(
+    const char relay_names[NUM_RELAY_SLOTS][MAX_RELAY_NAME_LEN + 1],
+    const char outlet_labels[NUM_RELAY_SLOTS][MAX_OUTLET_LABEL_LEN + 1]);
+bool config_save_relay_names(const char relay_names[NUM_RELAY_SLOTS][MAX_RELAY_NAME_LEN + 1]);
 void config_save_schedule(const char *json);
 bool config_load_schedule(char **json_out, size_t *len_out);
 void config_clear_schedule(void);

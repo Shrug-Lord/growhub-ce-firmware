@@ -57,7 +57,7 @@ There is no CO2 hardware on the units this project was built against. `sensors.c
 
 ## Hardware (bench)
 
-Two physical NIWA Growhub units are used for development. Agents should not assume any specific MAC or LAN IP — read MAC via `esptool chip-id`, discover IP via DHCP / router admin / mDNS. Sensor board variant on both units: `SH_NP01_S_134368b_V1.1` (top) + `SA-24-B 01.01.0644` (bottom). Detailed hardware reference is in `docs/HARDWARE.md`.
+Three physical NIWA units are used for development: two Growhub+ controllers and one original Growhub. Agents should not assume any specific MAC or LAN IP — read MAC via `esptool chip-id`, discover IP via DHCP / router admin / mDNS. The two Growhub+ units have sensor board variant `SH_NP01_S_134368b_V1.1` (top) + `SA-24-B 01.01.0644` (bottom); the original Growhub has compatible CE sensor behavior but its sensor-board marking has not been recorded. Detailed hardware reference is in `docs/HARDWARE.md`.
 
 ## Known issues
 

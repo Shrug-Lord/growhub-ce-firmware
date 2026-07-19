@@ -1,6 +1,6 @@
 # Command Center Integration Reference
 
-*Last updated: 2026-06-14 (v3 scheduling + time health contract) | Firmware version: 1.0.0C*
+*Last updated: 2026-07-14 (frozen Command Center MQTT baseline) | Firmware version: 1.1.0C*
 
 Use this doc to brief the companion Command Center project without reading the full firmware repo.
 
@@ -10,9 +10,11 @@ Normal users do not need this page. Start with [INSTALL.md](INSTALL.md) instead.
 
 ## Hardware
 
-- **Target:** Niwa Growhub — ESP32-D0WDQ6 rev 1.1
-- **MAC format:** `FCE8C0XXXXXX` (last 4 hex used for AP SSID: `growhub_XXXX`)
-- **Default AP:** `growhub_<last4mac>` — open, always-on even when connected to home WiFi
+- **Target:** Niwa Growhub and Growhub+ — ESP32-D0WDQ6 rev 1.0/1.1 class hardware
+- **MAC format:** 12 uppercase hex characters; do not assume a universal OUI
+- **Default AP:** `growhub_<last4mac>` — open; remains active by default, or
+  becomes a five-minute connectivity fallback when the user disables the
+  always-active preference
 
 ### Confirmed GPIO Pins
 
@@ -24,8 +26,10 @@ Normal users do not need this page. Start with [INSTALL.md](INSTALL.md) instead.
 | 27 | Outlet 4 (bit2) |
 | 16 | Sensor UART RX (SH_NP01) |
 | 17 | Sensor UART TX (SH_NP01) |
-| 0  | Button |
-| 2  | LED |
+| 0  | ROM-download Boot pad |
+| 4  | Front setup button (active-low) |
+| 12 | Blue/green operation LED (active-low) |
+| 14 | Red malfunction LED (active-low) |
 
 ---
 
@@ -33,16 +37,25 @@ Normal users do not need this page. Start with [INSTALL.md](INSTALL.md) instead.
 
 **4 outlets total.** The bitmask is a 4-bit value (0–15):
 
-| Bit | Outlet | Default label |
+| Bit | Outlet | Default assignment |
 |-----|--------|---------------------|
 | bit3 (value 8) | Outlet 1 | *(unassigned)* |
 | bit0 (value 1) | Outlet 2 | *(unassigned)* |
 | bit1 (value 2) | Outlet 3 | *(unassigned)* |
 | bit2 (value 4) | Outlet 4 | *(unassigned)* |
 
-Relay names are user-configurable and default to unassigned. Available device types: `None`, `Light`, `Fan`, `Humidifier`, `Dehumidifier`, `Water Pump`, `Heater`, `AC Controller`.
+Firmware stores outlet assignments separately from user-facing outlet labels.
+Assignments default to unassigned (`None` on MQTT). Labels default to the
+published fallback `Outlet N`. Available assignment values: `None`, `Light`,
+`Fan`, `Humidifier`, `Dehumidifier`, `Water Pump`, `Heater`, `AC Controller`.
 
-**Important:** The Command Center currently thinks there are 3 outlets and has no concept of outlet profiles. Both need to be fixed in the CC polish phase.
+Command Center should treat CE firmware as the source of truth for outlet
+assignments and labels. Subscribe to retained `growhub/<MAC>/outlets/state`
+before preflighting schedule templates, and write assignment or label changes
+through `growhub/<MAC>/outlets/config`.
+
+Command Center's `1.1.0C` contract models all four physical outlets and uses
+firmware-owned assignments and labels for schedule-template preflight.
 
 ---
 
@@ -58,20 +71,24 @@ All topics use MAC as the device identifier: `growhub/<MAC>/...`
 |-------|---------|-------|
 | `growhub/<MAC>/sensor/live` | JSON (see below) | Published on schedule (default 6s) |
 | `growhub/<MAC>/status` | `"online"` / `"offline"` | Retained, last-will = `"offline"` |
+| `growhub/<MAC>/outlets/state` | JSON | Retained outlet assignment and label state from firmware |
+| `growhub/<MAC>/outlets/error` | JSON | Rejected outlet config writes |
 | `growhub/<MAC>/schedule/state` | JSON | Retained active schedule mirror from firmware |
 | `growhub/<MAC>/schedule/error` | JSON | Rejected schedule writes/actions |
+| `growhub/<MAC>/time/error` | JSON | Rejected time actions |
 | `growhub/<MAC>/control/error` | JSON | Rejected control commands |
 
-**Sensor:** Niwa SH_NP01 sensor board -- UART, 9600 baud, GPIO 16/17. Two hardware variants exist:
-- **Without CO2** -- provides temp, humidity, light
-- **With CO2** -- same protocol, adds CO2 ppm in extended response
+**Sensor:** Niwa SH_NP01 sensor board -- UART, 9600 baud, GPIO 16/17. The
+verified hardware provides temperature, humidity, and light without CO2.
+Firmware reserves an optional `c2` field for a future verified CO2-capable
+variant, but clients must not require it.
 
 **Sensor payload format:**
 ```json
 {
   "nId": "AABBCCDDEEFF",
   "name": "GrowHub_B2C3",
-  "fw": "1.0.0C",
+  "fw": "1.1.0C",
   "data": [{
     "l": 75,
     "h": 58.2,
@@ -89,6 +106,27 @@ All topics use MAC as the device identifier: `growhub/<MAC>/...`
   - pos 4–7 = `"0000"` (reserved, always zero)
   - e.g. Outlet 2 ON only → `"10000000"`, all off → `"00000000"`, all on → `"11110000"`
 - `c2` = CO2 ppm — **only present on CO2 sensor variant**, omitted otherwise
+
+**Outlet assignment and label state payload:**
+```json
+{
+  "v": 1,
+  "source": "local",
+  "outlets": [
+    { "id": 1, "assignment": "Light", "label": "Canopy Light" },
+    { "id": 2, "assignment": "Fan", "label": "Exhaust Fan" },
+    { "id": 3, "assignment": "Fan", "label": "Circulation Fan" },
+    { "id": 4, "assignment": "Water Pump", "label": "Reservoir Pump" }
+  ]
+}
+```
+- Retained on `growhub/<MAC>/outlets/state`
+- Published on MQTT reconnect, accepted `outlets/config` writes, and local firmware assignment or label changes
+- `source` is informational: `local`, `mqtt`, or `reconnect`
+- `outlets[].id` is the physical outlet ID `1`-`4`, not the relay bit slot
+- `outlets[].assignment` is one of `None`, `Light`, `Fan`, `Humidifier`, `Dehumidifier`, `Water Pump`, `Heater`, `AC Controller`
+- `outlets[].label` is the firmware-owned user-facing outlet label; empty stored labels publish as `Outlet N`
+- Command Center should use retained `outlets/state` as the firmware-owned source of truth before showing schedule controls or loading schedule templates, and use labels to disambiguate duplicate assignments
 
 **Schedule state payload:**
 ```json
@@ -149,7 +187,7 @@ All topics use MAC as the device identifier: `growhub/<MAC>/...`
 - Published on MQTT reconnect, accepted `grow` writes, local firmware schedule saves/clears, and mode changes
 - Published when `time_warning` or `sensor_warning` appears or clears, even if relay outputs do not change
 - `active=false` uses `"schedule": null`
-- `source` is informational: `local`, `mqtt`, or `reconnect`
+- `source` is informational: `local`, `mqtt`, `time`, or `reconnect`
 - `outlet_status` always includes all four outlets; summaries are empty in manual mode, for unassigned outlets, and for outlets with no active schedule entry
 - `outlet_status[].summary` is firmware-owned display text, not a structured reason API. CC should display it as text and use `warnings[].code` plus `warnings[].outlets` for stable warning logic.
 - Time health fields let CC warn when wall-clock schedules are paused or SNTP is unhealthy
@@ -158,7 +196,7 @@ All topics use MAC as the device identifier: `growhub/<MAC>/...`
 - `sensor_warning` is non-empty when an active AUTO schedule depends on unavailable or stale temp/rH data; CC should show it as a top-level warning. It is empty in manual mode.
 - Because `schedule/state` is retained, CC should treat retained `sensor_warning` as current automation state on subscribe and clear the banner when the retained state publishes `sensor_warning: ""`.
 - If both warnings are non-empty, CC should show both in one compact warning area rather than choosing a single highest-priority banner. Order warnings by severity: active AUTO wall-clock automation blocked first, active AUTO temp/rH automation paused second, and drift-only or sync-health time warnings after automation-blocking warnings.
-- `warnings` contains machine-readable warning entries with `code`, `message`, `severity`, and optional `outlets`, published in display order. CC should use `warnings[].code` for logic and `warnings[].outlets` to highlight affected outlets. Omitted or empty `outlets` means device-wide. Warning `outlets` are numeric physical outlet IDs only; CC should resolve labels or assignments from current outlet state rather than expecting copied display names in warning entries. `time_sync_required` and `sensor_data_unavailable` include affected outlets when automation is blocked or paused; `time_sntp_unhealthy` stays device-wide because it is a drift/sync risk, not a specific outlet block. `message` is firmware-owned default display copy for the local web UI and simple clients; CC may render its own product-specific copy from `code` while preserving the warning meaning and severity.
+- `warnings` contains machine-readable warning entries with `code`, `message`, `severity`, and optional `outlets`, published in display order. CC should use `warnings[].code` for logic and `warnings[].outlets` to highlight affected outlets. Omitted or empty `outlets` means device-wide. Warning `outlets` are numeric physical outlet IDs only; CC should resolve labels or assignments from retained `outlets/state` rather than expecting copied display names in warning entries. `time_sync_required` and `sensor_data_unavailable` include affected outlets when automation is blocked or paused; `time_sntp_unhealthy` stays device-wide because it is a drift/sync risk, not a specific outlet block. `message` is firmware-owned default display copy for the local web UI and simple clients; CC may render its own product-specific copy from `code` while preserving the warning meaning and severity.
 - Initial warning codes:
 
 | Code | Severity | Meaning |
@@ -194,6 +232,31 @@ All topics use MAC as the device identifier: `growhub/<MAC>/...`
 - `reason` is a fixed v1 enum. CC should branch on `reason`, not `detail`; unknown future reasons should fall back to a generic rejected-schedule or rejected-action message.
 - Schedule reasons: `invalid_payload`, `unsupported_schedule_version`, `empty_schedule`, `invalid_outlet`, `missing_conditions`, `duplicate_condition`, `invalid_condition`, `condition_not_allowed`, `always_on_exclusive`, `invalid_time_window`, `invalid_band`, `invalid_interval`, `unsupported_action`, `auto_mode_required`, `pump_schedule_required`, `time_sync_required`, `pump_window_ineligible`
 
+**Outlet assignment error payload:**
+```json
+{
+  "reason": "invalid_assignment",
+  "outlet": 4,
+  "detail": "optional debugging text"
+}
+```
+- Published on `growhub/<MAC>/outlets/error`
+- Command Center should leave the previous mirrored `outlets/state` active when an outlet config write is rejected
+- `reason` is a fixed v1 enum. CC should branch on `reason`, not `detail`; unknown future reasons should fall back to a generic rejected-outlet-config message.
+- Outlet reasons: `invalid_payload`, `unsupported_outlet_config_version`, `missing_outlets`, `invalid_outlet`, `duplicate_outlet`, `invalid_assignment`, `invalid_label`, `write_failed`
+
+**Time action error payload:**
+```json
+{
+  "command": "time/action",
+  "reason": "invalid_epoch"
+}
+```
+- Published on `growhub/<MAC>/time/error`
+- Command Center should leave the previous mirrored `schedule/state` active when a time action is rejected
+- `reason` is a fixed v1 enum. CC should branch on `reason`; unknown future reasons should fall back to a generic rejected-time-action message.
+- Time reasons: `invalid_payload`, `unsupported_time_action_version`, `unsupported_action`, `invalid_epoch`
+
 ### CC → Device (subscribes)
 
 | Topic | Payload | Effect |
@@ -201,9 +264,78 @@ All topics use MAC as the device identifier: `growhub/<MAC>/...`
 | `growhub/<MAC>/control/mode` | `"2"` = manual, `"3"` = auto, `"7"` = all off + manual | Sets relay mode |
 | `growhub/<MAC>/control/relay` | Decimal bitmask string `"0"`–`"15"` | Sets relay state (manual mode) |
 | `growhub/<MAC>/schedule/action` | JSON `{"action":"pump_run_now","outlet":4}` | Runs schedule-owned actions |
+| `growhub/<MAC>/time/action` | JSON `{"v":1,"action":"sync_epoch","epoch":1780000000}` | Sets current wall time without changing time config |
+| `growhub/<MAC>/outlets/config` | Outlet assignment/label JSON v1 (see below) | Replaces all firmware outlet assignments and labels |
 | `growhub/<MAC>/config` | JSON `{"tZ":"...", "timeSrc":"sntp", "sntpPrimary":"pool.ntp.org", "sntpSecondary":"time.nist.gov", "tmpOff":0, "rhOff":0}` | Updates time settings / temp/rH calibration offsets |
 | `growhub/<MAC>/grow` | Schedule JSON v3 (see below) | Loads and persists schedule |
 | `growhub/<MAC>/ota` | URL string | Triggers OTA update from URL |
+
+---
+
+## Outlet Assignment And Label Writes
+
+Command Center assigns and labels outlets by publishing a full replacement document to
+`growhub/<MAC>/outlets/config` with QoS `1` and retained `false`.
+
+```json
+{
+  "v": 1,
+  "outlets": [
+    { "id": 1, "assignment": "Light", "label": "Canopy Light" },
+    { "id": 2, "assignment": "Fan", "label": "Exhaust Fan" },
+    { "id": 3, "assignment": "Fan", "label": "Circulation Fan" },
+    { "id": 4, "assignment": "Water Pump", "label": "Reservoir Pump" }
+  ]
+}
+```
+
+Rules:
+
+- Include exactly one entry for each physical outlet ID `1`-`4`
+- Use only the stable assignment values listed in `outlets/state`
+- `label` is optional for backward-compatible writes; omitted or empty labels publish back as `Outlet N`
+- Labels are trimmed, limited to 32 bytes, and must not contain ASCII control characters
+- Treat retained `outlets/state` as confirmation of the accepted assignment/label set
+- Treat `outlets/error` as rejection and leave the previous mirrored assignment/label state unchanged
+- Do not publish partial patches; the firmware API is full replacement
+
+Accepted assignment and label changes persist to firmware NVS. Label-only
+changes publish retained `outlets/state` and do not clear schedules, publish
+`schedule/state`, evaluate AUTO mode, or affect relay state. When an assignment
+changes, firmware clears that outlet's schedule entry, clears its local pause
+bit, publishes `outlets/state` plus `schedule/state`, and leaves the new
+assignment without a default schedule. In auto mode, the affected outlet turns
+OFF immediately if it no longer has an active schedule entry. In manual mode,
+relay outputs are left unchanged.
+
+---
+
+## Time Sync Action
+
+Command Center can set the device's current wall time over MQTT by publishing a
+non-retained message to `growhub/<MAC>/time/action` with QoS `1`.
+
+```json
+{
+  "v": 1,
+  "action": "sync_epoch",
+  "epoch": 1780000000
+}
+```
+
+Rules:
+
+- `v` must be `1`
+- `action` must be `sync_epoch`
+- `epoch` must be an integer Unix epoch accepted by firmware's wall-time sanity check
+- This action sets current wall time only; keep timezone, `timeSrc`, and SNTP server settings on `growhub/<MAC>/config`
+- The action does not change configured `timeSrc`, relay mode, timezone, or SNTP servers
+- On success, firmware publishes retained `schedule/state` with updated time health and source `time`
+- If the device is in AUTO, firmware evaluates the active schedule immediately after setting wall time
+- On rejection, firmware publishes `growhub/<MAC>/time/error` and leaves current wall time unchanged
+
+Command Center should use this MQTT action for remote time recovery instead of
+depending on HTTP `GET /savetime?epoch=N`.
 
 ---
 
@@ -213,10 +345,12 @@ Command Center should send this format on the `grow` topic when a schedule is lo
 
 Required load sequence:
 
-1. Publish the v3 schedule JSON to `growhub/<MAC>/grow`
-2. Publish `"3"` to `growhub/<MAC>/control/mode` to put the device in AUTO mode
-3. Subscribe to `growhub/<MAC>/schedule/state` and mirror the retained state back into CC's active schedule display
-4. Treat `control/relay` as a manual-mode override path, not the normal schedule execution path
+1. Subscribe to retained `growhub/<MAC>/outlets/state`
+2. Preflight the template against firmware-owned outlet assignments and use labels to disambiguate duplicate assignments
+3. Publish the v3 schedule JSON to `growhub/<MAC>/grow`
+4. Publish `"3"` to `growhub/<MAC>/control/mode` to put the device in AUTO mode
+5. Subscribe to `growhub/<MAC>/schedule/state` and mirror the retained state back into CC's active schedule display
+6. Treat `control/relay` as a manual-mode override path, not the normal schedule execution path
 
 ```json
 {
@@ -271,13 +405,16 @@ Required load sequence:
 | AC Controller | `temp_high_band_c` |
 | Water Pump | one `interval` per Water Pump outlet |
 
-Command Center should use this table to decide schedule-control visibility.
-Unsupported condition controls are hidden rather than shown disabled. Editors
-should present newly assigned outlets with no selected conditions; persisted
-schedule entries include only the conditions the user chooses. Firmware still
-validates incoming schedule payloads and rejects unsupported combinations. The
-local web UI can pause a saved outlet rule with `sched_dis` without deleting
-its persisted schedule conditions.
+Command Center should resolve outlet assignments from retained `outlets/state`
+and use this table to decide schedule-control visibility. It should use labels
+from the same state to distinguish duplicate assignments, such as two Fans or
+two Water Pumps. Unsupported condition controls are hidden rather than shown
+disabled. Editors should present newly assigned outlets with no selected
+conditions; persisted schedule entries include only the conditions the user
+chooses. Firmware still validates incoming schedule payloads against current
+firmware-owned assignments and rejects unsupported combinations; labels are not
+schedule validation inputs. The local web UI can pause a saved outlet rule with
+`sched_dis` without deleting its persisted schedule conditions.
 
 **Condition fields:**
 
@@ -295,7 +432,7 @@ Validation and runtime notes:
 - Each scheduled outlet must include at least one condition.
 - One condition of each supported type is allowed per outlet.
 - `always_on` is mutually exclusive with all other conditions.
-- Condition validity is based on the outlet's current assignment.
+- Condition validity is based on the outlet's current firmware-owned assignment from `outlets/state`.
 - Changing an outlet assignment clears that outlet's schedule entry without creating a replacement/default schedule; in auto mode, that outlet turns OFF immediately, while manual mode leaves relay outputs unchanged.
 - The new outlet assignment remains without an active schedule entry until the user or Command Center saves a schedule for it.
 - Humidity bands use `10`-`95` with at least a 2% gap.
@@ -330,17 +467,21 @@ Schedule is persisted to NVS — survives reboot even without CC connected.
 | GET/POST | `/save` | Form submissions (schedule uses POST; short actions/settings may use GET query params) |
 | GET | `/scan` | WiFi scan -> JSON array `[{"ssid":"...","rssi":-60},...]` |
 | GET | `/status` | Device status JSON (see below) |
-| GET | `/savetime?epoch=N` | Set device time from browser |
+| GET | `/savetime?epoch=N` | Set device time from browser; Command Center should use MQTT `time/action` |
 
 ### `/status` JSON Response
 
 ```json
 {
   "mac": "AABBCCDDEEFF",
-  "fw": "1.0.0C",
+  "fw": "1.1.0C",
   "wifi": true,
   "mqtt": true,
   "recovery_mode": false,
+  "keep_ap_active": false,
+  "ap_active": false,
+  "ap_reason": "off",
+  "ap_fallback_seconds": 0,
   "temp": 24.1,
   "rh": 58.2,
   "co2": 850,
@@ -370,12 +511,16 @@ Schedule is persisted to NVS — survives reboot even without CC connected.
 }
 ```
 
-`recovery_mode: true` means the device is in WiFi Recovery Mode (scanning hourly for configured SSID after retry exhaustion). CC should surface this state.
-`time_warning` is non-empty when the clock or configured time source needs user attention, including in manual mode. For example, if browser sync makes wall time valid while SNTP is still pending, CC should warn that the device may drift after long runs or power loss. It is retained in `schedule/state` and publishes immediately when it appears or clears, even if relay outputs do not change. CC should only use automation-paused wording when an active AUTO wall-clock schedule cannot run.
+`ap_reason` is one of `off`, `provisioning`, `preference`, `fallback`, or
+`manual_override`. While WiFi is disconnected and the AP is waiting on its
+five-minute fallback delay, `ap_active` is `false` and
+`ap_fallback_seconds` counts down. The legacy `recovery_mode` field remains
+`true` for automatic fallback and manual override states.
+`time_warning` is non-empty when the clock or configured time source needs user attention, including in manual mode. For example, if browser sync or MQTT `time/action` makes wall time valid while SNTP is still pending, CC should warn that the device may drift after long runs or power loss. It is retained in `schedule/state` and publishes immediately when it appears or clears, even if relay outputs do not change. CC should only use automation-paused wording when an active AUTO wall-clock schedule cannot run.
 Firmware starts SNTP during boot/config apply and restarts it when WiFi STA receives an IP. The drift-only `time_sntp_unhealthy` warning is suppressed for the first hour after SNTP start/restart; after a successful sync, firmware treats SNTP as unhealthy if the last successful sync becomes stale after three SNTP poll intervals, which is about three hours with the current one-hour poll interval. `time_sync_required` remains immediate when no valid wall time blocks automation.
 `sensor_warning` is non-empty when active AUTO temp/rH automation is paused because the required sensor data is invalid, unavailable, or stale. It is empty in manual mode.
 If both warnings are non-empty, CC should render both in one compact warning area, ordered by severity rather than hiding one.
-`warnings` mirrors warning state with stable codes for client logic. Entries have `code`, `message`, `severity`, and optional `outlets`; CC should not parse the human-readable strings to determine behavior. CC may replace `message` with product-specific copy derived from `code`, and can use numeric physical outlet IDs in `outlets` to mark affected outlet rows after resolving current labels or assignments from outlet state. `time_sntp_unhealthy` should be treated as device-wide even when active AUTO wall-clock schedules exist.
+`warnings` mirrors warning state with stable codes for client logic. Entries have `code`, `message`, `severity`, and optional `outlets`; CC should not parse the human-readable strings to determine behavior. CC may replace `message` with product-specific copy derived from `code`, and can use numeric physical outlet IDs in `outlets` to mark affected outlet rows after resolving current labels or assignments from retained `outlets/state`. `time_sntp_unhealthy` should be treated as device-wide even when active AUTO wall-clock schedules exist.
 `outlet_status[].summary` is firmware-owned display text; CC should not parse it for condition state.
 
 ---
@@ -402,10 +547,10 @@ Empty schedule writes are rejected and are not treated as clear commands. Use
 the explicit clear action when the intended result is no saved schedule.
 
 Changing an outlet assignment clears that outlet's schedule entry, does not
-create a replacement/default schedule, and publishes `schedule/state`. The new
-assignment remains without an active schedule entry until the user or Command
-Center saves a schedule for it. In auto mode, that outlet turns OFF immediately;
-in manual mode, relay outputs are left unchanged.
+create a replacement/default schedule, and publishes `outlets/state` plus
+`schedule/state`. The new assignment remains without an active schedule entry
+until the user or Command Center saves a schedule for it. In auto mode, that
+outlet turns OFF immediately; in manual mode, relay outputs are left unchanged.
 
 Manual relay overrides require manual mode. If Command Center needs to directly
 set relay state, it must publish `"2"` to `control/mode` before publishing a
@@ -471,18 +616,31 @@ or Command Center sends a direct relay command or switches back to auto.
 
 ## LED Status Patterns
 
-The device shows the highest-priority active state.
+The blue/green operation LED and red malfunction LED report independently.
 
-| Priority | Pattern | Meaning |
-|----------|---------|---------|
-| 1 | 3 fast pulses + 1.8s pause | **WiFi Recovery Mode** — scanning for configured SSID hourly |
-| 2 | 2 fast pulses + 1.8s pause | Active AUTO schedule needs valid wall time, but time has not been set |
-| 3 | Fast blink (200ms on/off) | AP-only mode — no WiFi credentials or manually disconnected |
-| 4 | Slow blink (1s on/1s off) | WiFi connected, MQTT down or disabled |
-| 5 | Solid ON | WiFi connected + MQTT connected |
+| LED | Pattern | Meaning |
+|-----|---------|---------|
+| Operation | 3 fast pulses + 1.8s pause | Setup AP active through automatic fallback or the physical-button override |
+| Operation | Fast blink (200ms on/off) | WiFi disconnected; setup AP fallback timeout is running |
+| Operation | Slow blink (1s on/1s off) | WiFi connected; configured/enabled MQTT broker is disconnected |
+| Operation | Solid ON | WiFi connected; MQTT is connected or intentionally not enabled |
+| Red malfunction | 2 fast pulses + 1.8s pause | Active AUTO schedule needs valid wall time, but time has not been set |
+| Red malfunction | OFF | No blocking wall-time warning |
 
 The time-needed pattern is used only when a configured AUTO schedule contains a wall-clock condition such as a light/fan time window or pump allowed window. Sensor-based conditions and pump intervals without an allowed window can still run without valid wall time.
 Sensor-data warnings do not add a new LED pattern in v1; CC and the local web UI surface them through top-level warnings and outlet summaries.
+
+The operation LED may be disabled per device from the local firmware's
+hardware-override page when a suspected GPIO or LED-circuit fault could
+interfere with normal device startup or operation.
+This does not change firmware status, MQTT health, or the red malfunction LED;
+it only leaves GPIO 12 inactive. Command Center must not treat operation-LED
+visibility as a device-health signal.
+
+The operation-LED override remains local to the firmware web interface in
+`1.1.0C`. The expanded local diagnostics page and sanitized JSON support export
+planned for `1.2.0C` do not add MQTT topics or fields. Command Center must not
+depend on either surface as part of the frozen `1.1.0C` contract.
 
 ---
 
@@ -490,20 +648,19 @@ Sensor-data warnings do not add a new LED pattern in v1; CC and the local web UI
 
 | Hold duration | Action |
 |--------------|--------|
-| Short press (<500ms) | Unused |
-| 3-second hold (3000–4999ms) | WiFi Recovery Mode toggle: in recovery → exit to AP-only (keep creds); in AP-only with creds → enter recovery |
+| Short hold (<3000ms) | Unused |
+| 3-second hold (3000–4999ms) | Toggle the session-only setup AP override; the override clears on reboot |
 | 5-second hold (≥5000ms) | Factory reset (erases NVS, reboots) |
 
 ---
 
-## WiFi Recovery Mode
+## Setup AP fallback
 
-Triggered automatically after 10 failed connection retries when the configured SSID is not visible in scan. Behavior:
-- Performs a WiFi scan every **1 hour**
-- When configured SSID reappears in scan → reconnects automatically
-- Cleared on successful reconnect
-- User can exit via 3s button hold (stays AP-only, keeps creds)
-- User can re-engage via 3s button hold from AP-only state
+When `keep_ap=0`, configured devices start in station-only mode. Five
+continuous minutes without a station IP activates the setup AP while station
+recovery continues once per minute. A successful connection disables the AP
+immediately. A three-second button hold enables a session-only override even
+while station WiFi is healthy; another hold or reboot clears the override.
 
 ---
 
@@ -516,24 +673,32 @@ Key NVS fields (namespace `"growhub"`):
 | `sta_ssid` | string | Home WiFi SSID |
 | `sta_pass` | string | Home WiFi password |
 | `ap_ssid` | string | Device AP name |
+| `keep_ap` | u8 | `1` keeps the setup AP active; `0` uses five-minute fallback |
 | `mqtt_host` | string | CC broker IP |
 | `mqtt_port` | u16 | CC broker port (default 1883) |
 | `mqtt_dis` | u8 | Soft-disable flag (1=disabled, 0=enabled) |
 | `relay_mode` | u8 | Persisted relay mode (0=AUTO, 1=MANUAL) — survives reboot |
-| `relay_0`–`relay_3` | string | Outlet device names (slot 0=bit0=O2, 1=bit1=O3, 2=bit2=O4, 3=bit3=O1) |
+| `relay_0`–`relay_3` | string | Outlet assignments (slot 0=bit0=O2, 1=bit1=O3, 2=bit2=O4, 3=bit3=O1) |
+| `label_0`–`label_3` | string | Outlet labels using the same slot mapping as `relay_0`–`relay_3`; empty means publish fallback `Outlet N` |
 | `sched_json` | blob | Persisted schedule JSON v3 |
 | `sched_dis` | u8 | Local web UI schedule-disable mask (bit0=O1 through bit3=O4) |
 | `timezone` | string | POSIX TZ string |
-| `time_src` | u8 | Time source (0=SNTP, 1=manual browser-set time) |
+| `time_src` | u8 | Time source (0=SNTP, 1=manual external-set time) |
 | `sntp_primary` | string | Primary SNTP server hostname |
 | `sntp_secondary` | string | Secondary SNTP server hostname |
 | `pin_outlet1`–`pin_outlet4` | u8 | Outlet relay GPIOs (defaults 33, 25, 26, 27) |
+
+The outlet assignment/label sync and MQTT `time/action` are additive public
+contracts included in the frozen `1.1.0C` minor-release scope.
 
 ---
 
 ## OTA Update
 
-URL-based only (no binary upload). Device must be on home WiFi (APSTA mode).
+Command Center-triggered OTA is URL-based. The device must be able to route to
+the firmware host over its active station connection; it may be running
+STA-only or AP+STA. The local device web UI separately supports direct
+`firmware.bin` upload.
 
 ```
 # On Mac:
@@ -541,16 +706,28 @@ cd firmware && .venv/bin/pio run
 python3 -m http.server 8080
 ipconfig getifaddr en0        # e.g. <host-ip>
 
-# On web UI (192.168.4.1 → Firmware Update):
+# On the device web UI (LAN IP or 192.168.4.1 → Firmware Update):
 http://<host-ip>:8080/.pio/build/growhub/firmware.bin
 ```
 
 ---
 
-## Known CC-Firmware Gaps (to fix in CC polish phase)
+## Command Center Release Status
 
-1. **CC scheduling model** — CC must use firmware-side scheduling as the normal path by publishing v3 schedules to `growhub/<MAC>/grow`, switching devices to AUTO mode, and mirroring `growhub/<MAC>/schedule/state`. Server-side relay automation should not be the normal schedule execution path.
-2. **CC local-edit display** — If firmware-local edits appear on `schedule/state`, CC should show them as the device's active schedule without silently mutating the original named schedule template.
-3. **"Open Command Center" link** — The CC URL is not stored on the device; firmware UI cannot link to it yet
-4. **Outlet profile sync** — Firmware outlet device types and CC outlet profiles are not mirrored yet; use a future retained state topic rather than MQTT connectivity lockouts.
-5. **`relay_mode` semantics** — Firmware-side schedules require `"3"` (auto); schedules persist in firmware NVS after the `grow` payload is accepted. `control/relay` remains a manual-mode override path, and `"7"` is an all-off manual override that persists manual mode.
+The companion implementation uses firmware-owned schedules, retained outlet
+and schedule mirrors, typed confirmed actions, local-edit drift handling, and
+the documented AUTO/MANUAL semantics. Its first release remains blocked on the
+`CE-1.1.0C` hardware-contract checklist and host-deployment evidence.
+
+The runnable checklist is maintained in the companion repository at
+`docs/release-evidence/CE-1.1.0C.md`. Complete it only after both repositories
+have exact commits: build and hash the firmware once, install that same
+`firmware.bin` on the test controllers, deploy Command Center from its recorded
+commit, exercise every checklist item, and save sanitized representative MQTT
+request/state/error payloads. Record the firmware commit and SHA-256, Command
+Center commit, pinned broker image/version, device variants, tester, and date.
+The companion `RELEASE_TAG=v0.1.0 npm run release:validate` command must pass
+with no unchecked evidence items before the release gate is considered closed.
+
+The firmware does not store the Command Center URL, so the local device UI does
+not currently offer an **Open Command Center** link.

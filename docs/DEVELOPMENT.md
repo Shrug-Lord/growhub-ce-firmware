@@ -39,6 +39,20 @@ Important artifacts:
 - `partitions.bin` - partition table
 - `ota_data_initial.bin` - initial OTA slot metadata
 
+To build the OTA image and copy it into another working directory, invoke the
+repository-owned helper from that directory:
+
+```bash
+cd /path/to/output-directory
+/path/to/Growhub-CE-Firmware/scripts/build-firmware-to-cwd.sh
+```
+
+The resulting `firmware.bin` is written to the directory where the command was
+started. A copied helper can also locate clones in common `$HOME/projects`,
+`$HOME/Projects`, `$HOME/src`, or `$HOME/Developer` locations. For any other
+clone location, set `GROWHUB_REPO_DIR=/path/to/Growhub-CE-Firmware`. Invoking
+the repository-owned copy is preferred because it cannot become stale.
+
 ## Flash From Source
 
 For development hardware already wired for UART, PlatformIO can flash directly:
@@ -70,10 +84,22 @@ To build firmware and the matching first-flash ZIP in one verified pass:
 scripts/build-verified-firmware.sh
 ```
 
+The lower-level packager can also build and package directly:
+
+```bash
+scripts/package-first-flash.sh
+```
+
+When `VERSION` is omitted, it reads the current `GROWHUB_VERSION` from
+`firmware/platformio.ini`. It honors an explicit `PLATFORMIO_CORE_DIR` and
+otherwise uses PlatformIO's normal user core directory. If the existing project
+virtual environment lacks `pip`, the packager bootstraps it with Python's
+standard `ensurepip` module before PlatformIO installs build tools.
+
 For advanced packaging from an existing build without rebuilding:
 
 ```bash
-SKIP_BUILD=1 VERSION=v1.0.0C scripts/package-first-flash.sh
+SKIP_BUILD=1 VERSION=v1.1.0C scripts/package-first-flash.sh
 ```
 
 Generated assets land under:

@@ -4,6 +4,8 @@
 #include "esp_log.h"
 #include "esp_sntp.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include <stdlib.h>
 #include <sys/time.h>
 #include <time.h>
@@ -16,6 +18,12 @@ static bool s_sntp_synced_this_boot = false;
 static int64_t s_sntp_started_us = 0;
 static int64_t s_sntp_last_sync_us = 0;
 static bool s_config_applied = false;
+static TaskHandle_t s_sntp_publish_task = NULL;
+
+static bool epoch_sane(time_t epoch)
+{
+    return epoch > 86400;
+}
 
 static int64_t sntp_stale_after_us(void)
 {
@@ -32,12 +40,28 @@ static void note_sntp_sync(void)
     s_sntp_last_sync_us = esp_timer_get_time();
 }
 
+static void sntp_publish_task(void *arg)
+{
+    (void)arg;
+
+    while (true) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        mqtt_publish_schedule_state("time");
+    }
+}
+
 static void on_sntp_sync(struct timeval *tv)
 {
     (void)tv;
     note_sntp_sync();
     ESP_LOGI(TAG, "SNTP time synchronized");
-    mqtt_publish_schedule_state("time");
+
+    // The SNTP notification runs in lwIP's TCP/IP task. MQTT publish can block
+    // while sending on the same network stack, so defer the complete publish
+    // operation to a normal worker task.
+    if (s_sntp_publish_task) {
+        xTaskNotifyGive(s_sntp_publish_task);
+    }
 }
 
 void time_sync_apply_config(void)
@@ -74,6 +98,13 @@ void time_sync_apply_config(void)
 
 void time_sync_init(void)
 {
+    if (!s_sntp_publish_task &&
+        xTaskCreate(sntp_publish_task, "sntp_publish", 4096, NULL, 3,
+                    &s_sntp_publish_task) != pdPASS) {
+        s_sntp_publish_task = NULL;
+        ESP_LOGE(TAG, "Failed to start SNTP publish task");
+    }
+
     time_sync_apply_config();
 }
 
@@ -101,7 +132,19 @@ bool time_sync_wall_time_valid(void)
 {
     time_t now;
     time(&now);
-    return now >= 86400;
+    return epoch_sane(now);
+}
+
+bool time_sync_set_epoch(time_t epoch, const char *source)
+{
+    if (!epoch_sane(epoch)) return false;
+
+    struct timeval tv = { .tv_sec = epoch, .tv_usec = 0 };
+    settimeofday(&tv, NULL);
+    ESP_LOGI(TAG, "Time set from %s: %ld",
+             (source && source[0]) ? source : "external",
+             (long)epoch);
+    return true;
 }
 
 const char *time_sync_source_str(void)

@@ -6,131 +6,163 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "freertos/timers.h"
 #include <string.h>
 
 static const char *TAG = "wifi";
-static bool s_connected = false;
-static int s_retry_count = 0;
-static bool s_ignore_next_sta_disconnect = false;
-#define MAX_RETRIES 10
 
-// WiFi Recovery Mode — entered after retry exhaustion when SSID not visible
-static bool s_recovery_mode = false;
-static TimerHandle_t s_recovery_timer = NULL;
-#define RECOVERY_SCAN_INTERVAL_MS (3600UL * 1000UL)  // 1 hour
+#define MAX_QUICK_RETRIES          10
+#define AP_FALLBACK_TIMEOUT_MS     (5UL * 60UL * 1000UL)
+#define RECOVERY_RETRY_INTERVAL_MS (60UL * 1000UL)
+#define AP_PREFERENCE_DELAY_MS     2000UL
 
-// Forward declaration
-static void recovery_scan_task(void *arg);
+static bool s_connected;
+static bool s_ap_active;
+static bool s_manual_ap_override;
+static int s_retry_count;
+static TickType_t s_fallback_deadline_tick;
+static char s_sta_ip[16];
+
+static TimerHandle_t s_fallback_timer;
+static TimerHandle_t s_recovery_timer;
+static TimerHandle_t s_preference_timer;
+
+static void set_ap_active(bool active, const char *reason)
+{
+    wifi_mode_t mode;
+    if (esp_wifi_get_mode(&mode) != ESP_OK) return;
+
+    wifi_mode_t wanted = mode;
+    if (active) {
+        wanted = (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA)
+            ? WIFI_MODE_APSTA : WIFI_MODE_AP;
+    } else if (mode == WIFI_MODE_APSTA) {
+        wanted = WIFI_MODE_STA;
+    } else if (mode == WIFI_MODE_AP) {
+        // AP-only is required when the device has no station credentials.
+        return;
+    }
+
+    if (wanted != mode) {
+        esp_err_t err = esp_wifi_set_mode(wanted);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to %s setup AP: %s",
+                     active ? "enable" : "disable", esp_err_to_name(err));
+            return;
+        }
+    }
+    s_ap_active = active;
+    ESP_LOGI(TAG, "Setup AP %s (%s)", active ? "enabled" : "disabled", reason);
+}
+
+static void stop_fallback_timer(void)
+{
+    s_fallback_deadline_tick = 0;
+    if (s_fallback_timer) xTimerStop(s_fallback_timer, 0);
+}
+
+static void start_fallback_timer(void)
+{
+    if (config_get()->keep_ap_active || s_manual_ap_override ||
+        !config_get()->sta_ssid[0] || s_ap_active) return;
+
+    if (!s_fallback_timer) return;
+    s_fallback_deadline_tick = xTaskGetTickCount() +
+        pdMS_TO_TICKS(AP_FALLBACK_TIMEOUT_MS);
+    xTimerStop(s_fallback_timer, 0);
+    xTimerChangePeriod(s_fallback_timer,
+                       pdMS_TO_TICKS(AP_FALLBACK_TIMEOUT_MS), 0);
+    ESP_LOGI(TAG, "Setup AP fallback scheduled in 5 minutes");
+}
+
+static void fallback_timer_cb(TimerHandle_t timer)
+{
+    (void)timer;
+    s_fallback_deadline_tick = 0;
+    if (!s_connected && !config_get()->keep_ap_active &&
+        !s_manual_ap_override && config_get()->sta_ssid[0]) {
+        set_ap_active(true, "station offline for 5 minutes");
+    }
+}
 
 static void recovery_timer_cb(TimerHandle_t timer)
 {
-    // Can't do blocking WiFi scan in timer context — spawn a task
-    xTaskCreate(recovery_scan_task, "wifi_scan", 4096, NULL, 2, NULL);
+    (void)timer;
+    if (!s_connected && config_get()->sta_ssid[0]) {
+        ESP_LOGI(TAG, "Periodic station recovery attempt");
+        esp_wifi_connect();
+    }
 }
 
-static void recovery_scan_task(void *arg)
+static void preference_timer_cb(TimerHandle_t timer)
 {
-    const growhub_config_t *cfg = config_get();
-    if (!cfg->sta_ssid[0]) {
-        vTaskDelete(NULL);
-        return;
+    (void)timer;
+    if (config_get()->keep_ap_active) {
+        set_ap_active(true, "user preference");
+    } else if (s_connected && !s_manual_ap_override) {
+        set_ap_active(false, "user preference");
+    } else if (!s_connected && !s_ap_active) {
+        start_fallback_timer();
     }
-
-    wifi_scan_config_t scan_cfg = {
-        .ssid = NULL, .bssid = NULL, .channel = 0, .show_hidden = false,
-        .scan_type = WIFI_SCAN_TYPE_ACTIVE,
-        .scan_time.active = {.min = 100, .max = 300},
-    };
-    esp_wifi_scan_start(&scan_cfg, true);
-
-    uint16_t count = 20;
-    wifi_ap_record_t *aps = malloc(count * sizeof(wifi_ap_record_t));
-    if (!aps) {
-        if (s_recovery_mode && s_recovery_timer) xTimerStart(s_recovery_timer, 0);
-        vTaskDelete(NULL);
-        return;
-    }
-
-    esp_wifi_scan_get_ap_records(&count, aps);
-
-    bool found = false;
-    for (int i = 0; i < count; i++) {
-        if (strcmp((char *)aps[i].ssid, cfg->sta_ssid) == 0) {
-            found = true;
-            break;
-        }
-    }
-    free(aps);
-
-    if (found) {
-        ESP_LOGI(TAG, "Recovery scan: '%s' found — attempting reconnect", cfg->sta_ssid);
-        s_retry_count = 0;
-        esp_wifi_connect();
-        // Timer restarts only if this reconnect also fails (handled in DISCONNECTED handler)
-    } else {
-        ESP_LOGI(TAG, "Recovery scan: '%s' not visible — will try again in 1h", cfg->sta_ssid);
-        if (!s_recovery_mode) {
-            wifi_enter_recovery_mode();
-        } else if (s_recovery_timer) {
-            xTimerStart(s_recovery_timer, 0);
-        }
-    }
-
-    vTaskDelete(NULL);
 }
 
 static void event_handler(void *arg, esp_event_base_t base,
                           int32_t event_id, void *event_data)
 {
+    (void)arg;
     if (base == WIFI_EVENT) {
         switch (event_id) {
         case WIFI_EVENT_STA_START:
-            if (config_get()->sta_ssid[0] != '\0') {
+            if (config_get()->sta_ssid[0]) {
                 ESP_LOGI(TAG, "Station started — connecting...");
+                start_fallback_timer();
                 esp_wifi_connect();
-            } else {
-                ESP_LOGI(TAG, "Station started for setup scans");
             }
             break;
         case WIFI_EVENT_STA_DISCONNECTED:
+            if (s_connected || s_fallback_deadline_tick == 0) start_fallback_timer();
             s_connected = false;
-            if (s_ignore_next_sta_disconnect) {
-                s_ignore_next_sta_disconnect = false;
-                ESP_LOGI(TAG, "Station disconnected intentionally — staying AP-only");
+            s_sta_ip[0] = '\0';
+            if (!config_get()->sta_ssid[0]) {
+                ESP_LOGI(TAG, "Station stopped — no saved credentials");
                 break;
             }
-            if (s_retry_count < MAX_RETRIES) {
+            if (s_retry_count < MAX_QUICK_RETRIES) {
                 s_retry_count++;
-                ESP_LOGI(TAG, "Disconnected — retry %d/%d", s_retry_count, MAX_RETRIES);
+                ESP_LOGI(TAG, "Disconnected — quick retry %d/%d",
+                         s_retry_count, MAX_QUICK_RETRIES);
                 esp_wifi_connect();
-            } else {
-                ESP_LOGW(TAG, "Max retries reached — scanning for '%s'",
-                         config_get()->sta_ssid);
-                // Check if SSID is visible before entering recovery mode
-                xTaskCreate(recovery_scan_task, "wifi_scan", 4096, NULL, 2, NULL);
-                // recovery_scan_task will enter recovery mode if SSID not found,
-                // or retry immediately if found
+            } else if (s_recovery_timer) {
+                ESP_LOGW(TAG, "Quick retries exhausted — retrying once per minute");
+                xTimerStart(s_recovery_timer, 0);
             }
             break;
+        case WIFI_EVENT_AP_START:
+            s_ap_active = true;
+            break;
+        case WIFI_EVENT_AP_STOP:
+            s_ap_active = false;
+            break;
         case WIFI_EVENT_AP_STACONNECTED:
-            ESP_LOGI(TAG, "AP client connected");
+            ESP_LOGI(TAG, "Setup AP client connected");
             break;
         case WIFI_EVENT_AP_STADISCONNECTED:
-            ESP_LOGI(TAG, "AP client disconnected");
+            ESP_LOGI(TAG, "Setup AP client disconnected");
+            break;
+        default:
             break;
         }
     } else if (base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *ev = event_data;
-        ESP_LOGI(TAG, "Connected — IP: " IPSTR, IP2STR(&ev->ip_info.ip));
+        snprintf(s_sta_ip, sizeof(s_sta_ip), IPSTR, IP2STR(&ev->ip_info.ip));
+        ESP_LOGI(TAG, "Connected — IP: %s", s_sta_ip);
         s_connected = true;
         s_retry_count = 0;
-        // Clear recovery mode on successful connection
-        if (s_recovery_mode) {
-            s_recovery_mode = false;
-            if (s_recovery_timer) xTimerStop(s_recovery_timer, 0);
-            ESP_LOGI(TAG, "Recovery Mode cleared — WiFi restored");
+        stop_fallback_timer();
+        if (s_recovery_timer) xTimerStop(s_recovery_timer, 0);
+
+        if (!config_get()->keep_ap_active && !s_manual_ap_override) {
+            set_ap_active(false, "station connected");
         }
         time_sync_on_wifi_connected();
     }
@@ -138,25 +170,31 @@ static void event_handler(void *arg, esp_event_base_t base,
 
 void wifi_init(void)
 {
-    esp_netif_init();
-    esp_event_loop_create_default();
-
-    // Create default netifs for both modes
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
     esp_netif_create_default_wifi_sta();
     esp_netif_create_default_wifi_ap();
 
     wifi_init_config_t init_cfg = WIFI_INIT_CONFIG_DEFAULT();
-    esp_wifi_init(&init_cfg);
+    ESP_ERROR_CHECK(esp_wifi_init(&init_cfg));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(
+        WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(
+        IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL, NULL));
 
-    esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
-                                        &event_handler, NULL, NULL);
-    esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
-                                        &event_handler, NULL, NULL);
+    s_fallback_timer = xTimerCreate("ap_fallback",
+        pdMS_TO_TICKS(AP_FALLBACK_TIMEOUT_MS), pdFALSE, NULL, fallback_timer_cb);
+    s_recovery_timer = xTimerCreate("wifi_retry",
+        pdMS_TO_TICKS(RECOVERY_RETRY_INTERVAL_MS), pdTRUE, NULL, recovery_timer_cb);
+    s_preference_timer = xTimerCreate("ap_pref",
+        pdMS_TO_TICKS(AP_PREFERENCE_DELAY_MS), pdFALSE, NULL, preference_timer_cb);
+    if (!s_fallback_timer || !s_recovery_timer || !s_preference_timer) {
+        ESP_LOGE(TAG, "Failed to allocate WiFi recovery timers");
+    }
 
     const growhub_config_t *cfg = config_get();
     bool has_sta_creds = cfg->sta_ssid[0] != '\0';
 
-    // AP config — always active for configuration access
     wifi_config_t ap_cfg = {
         .ap = {
             .max_connection = 4,
@@ -166,108 +204,126 @@ void wifi_init(void)
     };
     strncpy((char *)ap_cfg.ap.ssid, cfg->ap_ssid, sizeof(ap_cfg.ap.ssid));
     ap_cfg.ap.ssid_len = strlen(cfg->ap_ssid);
-
-    if (cfg->ap_password[0] != '\0') {
-        strncpy((char *)ap_cfg.ap.password, cfg->ap_password, sizeof(ap_cfg.ap.password));
+    if (cfg->ap_password[0]) {
+        strncpy((char *)ap_cfg.ap.password, cfg->ap_password,
+                sizeof(ap_cfg.ap.password));
         ap_cfg.ap.authmode = WIFI_AUTH_WPA2_PSK;
     }
 
-    if (has_sta_creds) {
-        // Both AP + Station
-        esp_wifi_set_mode(WIFI_MODE_APSTA);
+    // Configure both interfaces before selecting the startup mode.
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_cfg));
 
+    if (has_sta_creds) {
         wifi_config_t sta_cfg = {0};
         strncpy((char *)sta_cfg.sta.ssid, cfg->sta_ssid, sizeof(sta_cfg.sta.ssid));
-        strncpy((char *)sta_cfg.sta.password, cfg->sta_password, sizeof(sta_cfg.sta.password));
-
-        esp_wifi_set_config(WIFI_IF_STA, &sta_cfg);
-        esp_wifi_set_config(WIFI_IF_AP, &ap_cfg);
-        esp_wifi_start();
-
-        ESP_LOGI(TAG, "Mode: AP+STA — AP SSID: %s, connecting to: %s",
-                 cfg->ap_ssid, cfg->sta_ssid);
+        strncpy((char *)sta_cfg.sta.password, cfg->sta_password,
+                sizeof(sta_cfg.sta.password));
+        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_cfg));
+        if (!cfg->keep_ap_active) ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+        s_ap_active = cfg->keep_ap_active;
     } else {
-        // AP only — waiting for user to configure WiFi
-        esp_wifi_set_mode(WIFI_MODE_AP);
-        esp_wifi_set_config(WIFI_IF_AP, &ap_cfg);
-        esp_wifi_start();
-
-        ESP_LOGI(TAG, "Mode: AP only — SSID: %s (connect to configure WiFi)", cfg->ap_ssid);
+        ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+        s_ap_active = true;
     }
+
+    ESP_ERROR_CHECK(esp_wifi_start());
+    ESP_LOGI(TAG, "Mode: %s — setup AP %s",
+             has_sta_creds ? "station" : "provisioning",
+             s_ap_active ? "active" : "disabled");
 }
 
-bool wifi_is_connected(void)
+bool wifi_is_connected(void) { return s_connected; }
+bool wifi_is_ap_active(void) { return s_ap_active; }
+
+const char *wifi_ap_reason(void)
 {
-    return s_connected;
+    if (!s_ap_active) return "off";
+    if (!config_get()->sta_ssid[0]) return "provisioning";
+    if (s_manual_ap_override) return "manual_override";
+    if (config_get()->keep_ap_active) return "preference";
+    return "fallback";
+}
+
+uint32_t wifi_ap_fallback_seconds(void)
+{
+    if (s_fallback_deadline_tick == 0 || s_ap_active || s_connected) return 0;
+    TickType_t remaining = s_fallback_deadline_tick - xTaskGetTickCount();
+    if ((int32_t)remaining <= 0) return 0;
+    return (uint32_t)((remaining + pdMS_TO_TICKS(1000) - 1) /
+                      pdMS_TO_TICKS(1000));
+}
+
+const char *wifi_get_sta_ip(void) { return s_sta_ip; }
+
+void wifi_set_keep_ap_active(bool keep_active)
+{
+    config_save_keep_ap_active(keep_active);
+    if (s_preference_timer) {
+        xTimerStop(s_preference_timer, 0);
+        xTimerStart(s_preference_timer, 0);
+    }
 }
 
 void wifi_reconnect(void)
 {
     const growhub_config_t *cfg = config_get();
-    if (cfg->sta_ssid[0] == '\0') return;
+    if (!cfg->sta_ssid[0]) return;
 
-    ESP_LOGI(TAG, "Reconnecting to: %s", cfg->sta_ssid);
-    s_retry_count = 0;
-    s_ignore_next_sta_disconnect = false;
-
-    esp_wifi_disconnect();
-
-    // Switch to APSTA if currently AP-only
     wifi_mode_t mode;
     esp_wifi_get_mode(&mode);
-    if (mode == WIFI_MODE_AP) {
-        esp_wifi_set_mode(WIFI_MODE_APSTA);
-    }
+    if (mode == WIFI_MODE_AP) esp_wifi_set_mode(WIFI_MODE_APSTA);
 
     wifi_config_t sta_cfg = {0};
     strncpy((char *)sta_cfg.sta.ssid, cfg->sta_ssid, sizeof(sta_cfg.sta.ssid));
-    strncpy((char *)sta_cfg.sta.password, cfg->sta_password, sizeof(sta_cfg.sta.password));
+    strncpy((char *)sta_cfg.sta.password, cfg->sta_password,
+            sizeof(sta_cfg.sta.password));
     esp_wifi_set_config(WIFI_IF_STA, &sta_cfg);
 
-    esp_wifi_connect();
+    bool was_connected = s_connected;
+    s_retry_count = 0;
+    s_connected = false;
+    start_fallback_timer();
+    if (was_connected) {
+        // The disconnect event owns the first reconnect attempt.
+        esp_wifi_disconnect();
+    } else {
+        esp_wifi_connect();
+    }
 }
 
 bool wifi_is_in_recovery_mode(void)
 {
-    return s_recovery_mode;
+    return s_manual_ap_override ||
+        (s_ap_active && config_get()->sta_ssid[0] && !config_get()->keep_ap_active);
 }
+
+bool wifi_is_manual_ap_override(void) { return s_manual_ap_override; }
 
 void wifi_enter_recovery_mode(void)
 {
-    if (s_recovery_mode) return;  // already in recovery
-    s_recovery_mode = true;
-
-    ESP_LOGI(TAG, "WiFi Recovery Mode: will scan for '%s' every hour",
-             config_get()->sta_ssid);
-
-    if (!s_recovery_timer) {
-        s_recovery_timer = xTimerCreate("wifi_rec",
-                                         pdMS_TO_TICKS(RECOVERY_SCAN_INTERVAL_MS),
-                                         pdFALSE,  // one-shot; restarted manually after each scan
-                                         NULL,
-                                         recovery_timer_cb);
-    }
-    if (s_recovery_timer) {
-        xTimerStart(s_recovery_timer, 0);
-    }
+    s_manual_ap_override = true;
+    stop_fallback_timer();
+    set_ap_active(true, "physical button override");
 }
 
 void wifi_exit_recovery_mode(bool clear_creds)
 {
-    s_recovery_mode = false;
-    s_retry_count = 0;
-    s_connected = false;
-
-    if (s_recovery_timer) xTimerStop(s_recovery_timer, 0);
-
-    s_ignore_next_sta_disconnect = true;
-    esp_wifi_disconnect();
-    esp_wifi_set_mode(WIFI_MODE_AP);
-
+    s_manual_ap_override = false;
     if (clear_creds) {
+        stop_fallback_timer();
+        if (s_recovery_timer) xTimerStop(s_recovery_timer, 0);
         config_save_wifi("", "");
-        ESP_LOGI(TAG, "Recovery Mode exited — WiFi credentials cleared");
-    } else {
-        ESP_LOGI(TAG, "Recovery Mode exited — staying AP-only (creds kept)");
+        s_connected = false;
+        s_sta_ip[0] = '\0';
+        esp_wifi_disconnect();
+        esp_wifi_set_mode(WIFI_MODE_AP);
+        s_ap_active = true;
+        ESP_LOGI(TAG, "WiFi credentials cleared — provisioning AP active");
+    } else if (s_connected && !config_get()->keep_ap_active) {
+        set_ap_active(false, "physical override cancelled");
+    } else if (!s_connected && !config_get()->keep_ap_active) {
+        set_ap_active(false, "physical override cancelled");
+        start_fallback_timer();
     }
 }

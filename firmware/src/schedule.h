@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 // Initialize the schedule engine (starts its own timer task)
 void schedule_init(void);
@@ -11,6 +12,10 @@ bool schedule_load(const char *json, int len);
 
 // Clear the active schedule.
 void schedule_clear(void);
+
+// Remove saved schedule entries for the supplied physical outlet mask.
+// Mask bit0=Outlet1 ... bit3=Outlet4. Returns true if any entry was removed.
+bool schedule_remove_entries_for_outlets(uint8_t outlet_mask);
 
 // Returns true if a schedule is currently loaded with at least one active entry.
 bool schedule_is_active(void);

@@ -35,49 +35,133 @@
 
 static const char *TAG = "main";
 
-// LED status blink task
+#define LED_ACTIVE_LEVEL   0
+#define LED_INACTIVE_LEVEL 1
+
+typedef enum {
+    OP_LED_RECOVERY,
+    OP_LED_WIFI_OFFLINE,
+    OP_LED_MQTT_OFFLINE,
+    OP_LED_HEALTHY,
+} operation_led_state_t;
+
+static esp_err_t led_pin_init(uint8_t pin, const char *name)
+{
+    esp_err_t err = gpio_reset_pin(pin);
+    if (err == ESP_OK) err = gpio_set_level(pin, LED_INACTIVE_LEVEL);
+    if (err == ESP_OK) err = gpio_set_direction(pin, GPIO_MODE_OUTPUT);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "%s LED setup failed on GPIO %d: %s",
+                 name, pin, esp_err_to_name(err));
+    }
+    return err;
+}
+
+static esp_err_t led_pin_disable(uint8_t pin, const char *name)
+{
+    gpio_config_t io = {
+        .pin_bit_mask = 1ULL << pin,
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    esp_err_t err = gpio_config(&io);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "%s LED disable failed on GPIO %d: %s",
+                 name, pin, esp_err_to_name(err));
+    }
+    return err;
+}
+
+static void led_write(uint8_t pin, bool on)
+{
+    esp_err_t err = gpio_set_level(pin, on ? LED_ACTIVE_LEVEL : LED_INACTIVE_LEVEL);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "LED write failed on GPIO %d: %s", pin, esp_err_to_name(err));
+    }
+}
+
+static operation_led_state_t operation_led_state(void)
+{
+    if (wifi_is_in_recovery_mode()) return OP_LED_RECOVERY;
+    if (!wifi_is_connected()) return OP_LED_WIFI_OFFLINE;
+    if (mqtt_is_enabled() && !mqtt_is_connected()) return OP_LED_MQTT_OFFLINE;
+    return OP_LED_HEALTHY;
+}
+
+// Drives the blue/green operation LED and red malfunction LED. Both LEDs are
+// active-low on the verified Growhub and Growhub+ board design.
 static void led_task(void *arg)
 {
+    (void)arg;
     const growhub_config_t *cfg = config_get();
-    gpio_reset_pin(cfg->pin_led);
-    gpio_set_direction(cfg->pin_led, GPIO_MODE_OUTPUT);
+    bool operation_ready = false;
+    if (cfg->operation_led_enabled) {
+        operation_ready = led_pin_init(cfg->pin_led, "Operation") == ESP_OK;
+    } else {
+        led_pin_disable(cfg->pin_led, "Operation");
+        ESP_LOGW(TAG, "Operation LED disabled; GPIO %d is high-impedance",
+                 cfg->pin_led);
+    }
+    bool malfunction_ready =
+        led_pin_init(cfg->pin_error_led, "Malfunction") == ESP_OK;
+    if (!operation_ready && !malfunction_ready) {
+        vTaskDelete(NULL);
+        return;
+    }
+
+    operation_led_state_t op_state = operation_led_state();
+    bool time_warning = schedule_time_sync_required();
+    TickType_t op_since = xTaskGetTickCount();
+    TickType_t warning_since = op_since;
 
     while (1) {
-        if (wifi_is_in_recovery_mode()) {
-            // 3 fast pulses + pause — scanning for configured WiFi
-            for (int i = 0; i < 3; i++) {
-                gpio_set_level(cfg->pin_led, 1);
-                vTaskDelay(pdMS_TO_TICKS(200));
-                gpio_set_level(cfg->pin_led, 0);
-                vTaskDelay(pdMS_TO_TICKS(200));
-            }
-            vTaskDelay(pdMS_TO_TICKS(1800));  // pause to complete ~3s cycle
-        } else if (schedule_time_sync_required()) {
-            // 2 fast pulses + pause — active AUTO wall-clock schedule needs time
-            for (int i = 0; i < 2; i++) {
-                gpio_set_level(cfg->pin_led, 1);
-                vTaskDelay(pdMS_TO_TICKS(200));
-                gpio_set_level(cfg->pin_led, 0);
-                vTaskDelay(pdMS_TO_TICKS(200));
-            }
-            vTaskDelay(pdMS_TO_TICKS(1800));
-        } else if (!wifi_is_connected()) {
-            // Fast blink — AP mode, no WiFi credentials or manually disconnected
-            gpio_set_level(cfg->pin_led, 1);
-            vTaskDelay(pdMS_TO_TICKS(200));
-            gpio_set_level(cfg->pin_led, 0);
-            vTaskDelay(pdMS_TO_TICKS(200));
-        } else if (!mqtt_is_connected()) {
-            // Slow blink — WiFi OK, MQTT down
-            gpio_set_level(cfg->pin_led, 1);
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            gpio_set_level(cfg->pin_led, 0);
-            vTaskDelay(pdMS_TO_TICKS(1000));
-        } else {
-            // Solid on — everything good
-            gpio_set_level(cfg->pin_led, 1);
-            vTaskDelay(pdMS_TO_TICKS(2000));
+        TickType_t now = xTaskGetTickCount();
+        operation_led_state_t next_op_state = operation_led_state();
+        bool next_time_warning = schedule_time_sync_required();
+        if (next_op_state != op_state) {
+            op_state = next_op_state;
+            op_since = now;
         }
+        if (next_time_warning != time_warning) {
+            time_warning = next_time_warning;
+            warning_since = now;
+        }
+
+        uint32_t op_ms = (uint32_t)((now - op_since) * portTICK_PERIOD_MS);
+        uint32_t warning_ms = (uint32_t)((now - warning_since) * portTICK_PERIOD_MS);
+        bool operation_on = false;
+        switch (op_state) {
+            case OP_LED_RECOVERY: {
+                uint32_t phase = op_ms % 3000;
+                operation_on = phase < 1200 && (phase % 400) < 200;
+                break;
+            }
+            case OP_LED_WIFI_OFFLINE:
+                operation_on = (op_ms % 400) < 200;
+                break;
+            case OP_LED_MQTT_OFFLINE:
+                operation_on = (op_ms % 2000) < 1000;
+                break;
+            case OP_LED_HEALTHY:
+                operation_on = true;
+                break;
+        }
+
+        bool malfunction_on = false;
+        if (time_warning) {
+            uint32_t phase = warning_ms % 2600;
+            malfunction_on = phase < 800 && (phase % 400) < 200;
+        }
+
+        if (operation_ready) {
+            led_write(cfg->pin_led, operation_on);
+        }
+        if (malfunction_ready) {
+            led_write(cfg->pin_error_led, malfunction_on);
+        }
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
@@ -171,10 +255,10 @@ void app_main(void)
     sensors_init();
     button_init();
 
-    // 3. Start WiFi (AP + optional STA)
+    // 3. Start WiFi (provisioning/preference AP + optional STA)
     wifi_init();
 
-    // 4. Web config server (always available, even in AP-only mode)
+    // 4. Web config server (served on every active WiFi interface)
     webserver_init();
 
     // 5. Time sync
@@ -202,7 +286,9 @@ void app_main(void)
     mqtt_init();
 
     // 8. LED status indicator
-    xTaskCreate(led_task, "led", 2048, NULL, 1, NULL);
+    if (xTaskCreate(led_task, "led", 2048, NULL, 1, NULL) != pdPASS) {
+        ESP_LOGE(TAG, "Failed to start status LED task");
+    }
 
     // 9. Sensor read + publish loop
     xTaskCreate(sensor_loop_task, "sensor_loop", 4096, NULL, 4, NULL);

@@ -2,6 +2,7 @@
 #include "nvs_flash.h"
 #include "nvs.h"
 #include "esp_log.h"
+#include "esp_err.h"
 #include "esp_mac.h"
 #include "esp_system.h"
 #include <string.h>
@@ -22,6 +23,8 @@ static void load_defaults(void)
     s_config.sta_ssid[0] = '\0';
     s_config.sta_password[0] = '\0';
     s_config.ap_password[0] = '\0'; // open AP by default
+    // Preserve the historical always-on setup AP behavior across upgrades.
+    s_config.keep_ap_active = 1;
 
     // MQTT — optional, user configures via web UI; empty default = disabled
     s_config.mqtt_host[0] = '\0';
@@ -38,9 +41,10 @@ static void load_defaults(void)
     // Timezone — US Eastern
     strncpy(s_config.timezone, "EST5EDT,M3.2.0,M11.1.0", MAX_TIMEZONE_LEN);
 
-    // Relay names default to unassigned. Labels are shown only after the user assigns them.
+    // Outlet assignments default to None; labels use the Outlet N fallback.
     for (int i = 0; i < NUM_RELAY_SLOTS; i++) {
         s_config.relay_names[i][0] = '\0';
+        s_config.outlet_labels[i][0] = '\0';
     }
 
     // GPIO defaults
@@ -52,6 +56,8 @@ static void load_defaults(void)
     s_config.pin_sensor_uart_rx = DEFAULT_SENSOR_UART_RX_PIN;
     s_config.pin_button      = DEFAULT_BUTTON_PIN;
     s_config.pin_led         = DEFAULT_LED_PIN;
+    s_config.pin_error_led   = DEFAULT_ERROR_LED_PIN;
+    s_config.operation_led_enabled = DEFAULT_OPERATION_LED_ENABLED;
 
     // Calibration
     s_config.temp_offset = 0.0f;
@@ -100,6 +106,7 @@ static void load_from_nvs(void)
     nvs_read_str(h, "sta_pass",     s_config.sta_password,  sizeof(s_config.sta_password));
     nvs_read_str(h, "ap_ssid",      s_config.ap_ssid,       sizeof(s_config.ap_ssid));
     nvs_read_str(h, "ap_pass",      s_config.ap_password,   sizeof(s_config.ap_password));
+    nvs_read_u8(h,  "keep_ap",      &s_config.keep_ap_active);
     nvs_read_str(h, "mqtt_host",    s_config.mqtt_host,     sizeof(s_config.mqtt_host));
     nvs_read_u16(h, "mqtt_port",    &s_config.mqtt_port);
     nvs_read_str(h, "dev_name",     s_config.device_name,   sizeof(s_config.device_name));
@@ -113,6 +120,10 @@ static void load_from_nvs(void)
     nvs_read_str(h, "relay_1", s_config.relay_names[1], MAX_RELAY_NAME_LEN + 1);
     nvs_read_str(h, "relay_2", s_config.relay_names[2], MAX_RELAY_NAME_LEN + 1);
     nvs_read_str(h, "relay_3", s_config.relay_names[3], MAX_RELAY_NAME_LEN + 1);
+    nvs_read_str(h, "label_0", s_config.outlet_labels[0], MAX_OUTLET_LABEL_LEN + 1);
+    nvs_read_str(h, "label_1", s_config.outlet_labels[1], MAX_OUTLET_LABEL_LEN + 1);
+    nvs_read_str(h, "label_2", s_config.outlet_labels[2], MAX_OUTLET_LABEL_LEN + 1);
+    nvs_read_str(h, "label_3", s_config.outlet_labels[3], MAX_OUTLET_LABEL_LEN + 1);
 
     nvs_read_u8(h, "pin_outlet1", &s_config.pin_relay_outlet1);
     nvs_read_u8(h, "pin_outlet2", &s_config.pin_relay_outlet2);
@@ -122,6 +133,8 @@ static void load_from_nvs(void)
     nvs_read_u8(h, "pin_sensor_rx", &s_config.pin_sensor_uart_rx);
     nvs_read_u8(h, "pin_btn",     &s_config.pin_button);
     nvs_read_u8(h, "pin_led",     &s_config.pin_led);
+    nvs_read_u8(h, "pin_err_led", &s_config.pin_error_led);
+    nvs_read_u8(h, "op_led_en",   &s_config.operation_led_enabled);
     nvs_read_u8(h, "report_s",    &s_config.report_interval_s);
     nvs_read_u8(h, "mqtt_dis",    &s_config.mqtt_disabled);
     nvs_read_u8(h, "relay_mode",  &s_config.relay_mode);
@@ -168,6 +181,33 @@ void config_init(void)
 
     load_defaults();
     load_from_nvs();
+    bool pin_migrated = false;
+    // GPIO 0 was incorrectly documented as the front button in early CE
+    // releases; it is the separate ROM-download Boot pad. Migrate that legacy
+    // value so upgraded devices use the verified active-low button on GPIO 4.
+    if (s_config.pin_button == 0) {
+        s_config.pin_button = DEFAULT_BUTTON_PIN;
+        pin_migrated = true;
+        ESP_LOGW(TAG, "Migrated legacy button GPIO 0 to GPIO %d",
+                 DEFAULT_BUTTON_PIN);
+    }
+    // GPIO 2 was the unverified early CE status-LED assumption. Bench
+    // discovery confirmed the operation LED on GPIO 12.
+    if (s_config.pin_led == 2) {
+        s_config.pin_led = DEFAULT_LED_PIN;
+        pin_migrated = true;
+        ESP_LOGW(TAG, "Migrated legacy operation LED GPIO 2 to GPIO %d",
+                 DEFAULT_LED_PIN);
+    }
+    if (pin_migrated) {
+        nvs_handle_t h;
+        if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
+            nvs_set_u8(h, "pin_btn", s_config.pin_button);
+            nvs_set_u8(h, "pin_led", s_config.pin_led);
+            nvs_commit(h);
+            nvs_close(h);
+        }
+    }
     init_mac_string();
 
     ESP_LOGI(TAG, "Device MAC: %s", s_mac_str);
@@ -206,6 +246,20 @@ void config_save_wifi(const char *ssid, const char *password)
         nvs_commit(h);
         nvs_close(h);
         ESP_LOGI(TAG, "WiFi credentials saved");
+    }
+}
+
+void config_save_keep_ap_active(bool keep_active)
+{
+    s_config.keep_ap_active = keep_active ? 1 : 0;
+
+    nvs_handle_t h;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u8(h, "keep_ap", s_config.keep_ap_active);
+        nvs_commit(h);
+        nvs_close(h);
+        ESP_LOGI(TAG, "Setup AP preference saved: %s",
+                 keep_active ? "always active" : "fallback only");
     }
 }
 
@@ -290,6 +344,19 @@ void config_save_sntp_servers(const char *primary, const char *secondary)
     }
 }
 
+void config_save_operation_led_enabled(bool enabled)
+{
+    s_config.operation_led_enabled = enabled ? 1 : 0;
+
+    nvs_handle_t h;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u8(h, "op_led_en", s_config.operation_led_enabled);
+        nvs_commit(h);
+        nvs_close(h);
+        ESP_LOGI(TAG, "Operation LED %s", enabled ? "enabled" : "disabled");
+    }
+}
+
 void config_save_pins(const growhub_config_t *cfg)
 {
     s_config.pin_relay_outlet1 = cfg->pin_relay_outlet1;
@@ -298,9 +365,14 @@ void config_save_pins(const growhub_config_t *cfg)
     s_config.pin_relay_outlet4 = cfg->pin_relay_outlet4;
     s_config.pin_sensor_uart_tx = cfg->pin_sensor_uart_tx;
     s_config.pin_sensor_uart_rx = cfg->pin_sensor_uart_rx;
+    s_config.pin_button = cfg->pin_button;
+    s_config.pin_led = cfg->pin_led;
+    s_config.pin_error_led = cfg->pin_error_led;
     for (int i = 0; i < NUM_RELAY_SLOTS; i++) {
         strncpy(s_config.relay_names[i], cfg->relay_names[i], MAX_RELAY_NAME_LEN);
         s_config.relay_names[i][MAX_RELAY_NAME_LEN] = '\0';
+        strncpy(s_config.outlet_labels[i], cfg->outlet_labels[i], MAX_OUTLET_LABEL_LEN);
+        s_config.outlet_labels[i][MAX_OUTLET_LABEL_LEN] = '\0';
     }
 
     nvs_handle_t h;
@@ -311,14 +383,107 @@ void config_save_pins(const growhub_config_t *cfg)
         nvs_set_u8(h, "pin_outlet4", s_config.pin_relay_outlet4);
         nvs_set_u8(h, "pin_sensor_tx", s_config.pin_sensor_uart_tx);
         nvs_set_u8(h, "pin_sensor_rx", s_config.pin_sensor_uart_rx);
+        nvs_set_u8(h, "pin_btn", s_config.pin_button);
+        nvs_set_u8(h, "pin_led", s_config.pin_led);
+        nvs_set_u8(h, "pin_err_led", s_config.pin_error_led);
         nvs_write_str(h, "relay_0", s_config.relay_names[0]);
         nvs_write_str(h, "relay_1", s_config.relay_names[1]);
         nvs_write_str(h, "relay_2", s_config.relay_names[2]);
         nvs_write_str(h, "relay_3", s_config.relay_names[3]);
+        nvs_write_str(h, "label_0", s_config.outlet_labels[0]);
+        nvs_write_str(h, "label_1", s_config.outlet_labels[1]);
+        nvs_write_str(h, "label_2", s_config.outlet_labels[2]);
+        nvs_write_str(h, "label_3", s_config.outlet_labels[3]);
         nvs_commit(h);
         nvs_close(h);
         ESP_LOGI(TAG, "Outlet config saved");
     }
+}
+
+bool config_normalize_outlet_label(const char *label, char dest[MAX_OUTLET_LABEL_LEN + 1])
+{
+    if (!dest) return false;
+    dest[0] = '\0';
+    if (!label) return true;
+
+    while (*label == ' ') label++;
+    const char *end = label + strlen(label);
+    while (end > label && end[-1] == ' ') end--;
+
+    size_t len = (size_t)(end - label);
+    if (len > MAX_OUTLET_LABEL_LEN) return false;
+
+    for (size_t i = 0; i < len; i++) {
+        unsigned char ch = (unsigned char)label[i];
+        if (ch < 32 || ch == 127) return false;
+    }
+
+    memcpy(dest, label, len);
+    dest[len] = '\0';
+    return true;
+}
+
+void config_outlet_label_or_default(int outlet_id, const char *stored, char *out, size_t len)
+{
+    if (!out || len == 0) return;
+
+    if (stored && stored[0]) {
+        snprintf(out, len, "%s", stored);
+    } else {
+        snprintf(out, len, "Outlet %d", outlet_id);
+    }
+}
+
+bool config_save_outlet_config(
+    const char relay_names[NUM_RELAY_SLOTS][MAX_RELAY_NAME_LEN + 1],
+    const char outlet_labels[NUM_RELAY_SLOTS][MAX_OUTLET_LABEL_LEN + 1])
+{
+    nvs_handle_t h;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to open NVS for outlet config");
+        return false;
+    }
+
+    esp_err_t err = ESP_OK;
+    for (int i = 0; i < NUM_RELAY_SLOTS; i++) {
+        char relay_key[8];
+        char label_key[8];
+        snprintf(relay_key, sizeof(relay_key), "relay_%d", i);
+        snprintf(label_key, sizeof(label_key), "label_%d", i);
+
+        esp_err_t set_err = nvs_set_str(h, relay_key, relay_names[i]);
+        if (set_err != ESP_OK) err = set_err;
+        set_err = nvs_set_str(h, label_key, outlet_labels[i]);
+        if (set_err != ESP_OK) err = set_err;
+    }
+    if (err == ESP_OK) {
+        err = nvs_commit(h);
+    }
+    nvs_close(h);
+
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to save outlet config: %s", esp_err_to_name(err));
+        return false;
+    }
+
+    for (int i = 0; i < NUM_RELAY_SLOTS; i++) {
+        strncpy(s_config.relay_names[i], relay_names[i], MAX_RELAY_NAME_LEN);
+        s_config.relay_names[i][MAX_RELAY_NAME_LEN] = '\0';
+        strncpy(s_config.outlet_labels[i], outlet_labels[i], MAX_OUTLET_LABEL_LEN);
+        s_config.outlet_labels[i][MAX_OUTLET_LABEL_LEN] = '\0';
+    }
+    ESP_LOGI(TAG, "Outlet assignments and labels saved");
+    return true;
+}
+
+bool config_save_relay_names(const char relay_names[NUM_RELAY_SLOTS][MAX_RELAY_NAME_LEN + 1])
+{
+    char outlet_labels[NUM_RELAY_SLOTS][MAX_OUTLET_LABEL_LEN + 1] = {{0}};
+    for (int i = 0; i < NUM_RELAY_SLOTS; i++) {
+        strncpy(outlet_labels[i], s_config.outlet_labels[i], MAX_OUTLET_LABEL_LEN);
+        outlet_labels[i][MAX_OUTLET_LABEL_LEN] = '\0';
+    }
+    return config_save_outlet_config(relay_names, outlet_labels);
 }
 
 void config_save_schedule(const char *json)

@@ -1,24 +1,30 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 // Initialize WiFi subsystem.
 // If station credentials are configured, connects as station.
-// Always starts AP mode in parallel for config access.
+// Starts the setup AP according to provisioning and persisted preference state.
 void wifi_init(void);
 
 // True when connected to the home WiFi network (station mode)
 bool wifi_is_connected(void);
+bool wifi_is_ap_active(void);
+const char *wifi_ap_reason(void);
+uint32_t wifi_ap_fallback_seconds(void);
+const char *wifi_get_sta_ip(void);
+void wifi_set_keep_ap_active(bool keep_active);
 
 // Reconnect station with current config (call after saving new credentials)
 void wifi_reconnect(void);
 
-// WiFi Recovery Mode: entered after retry exhaustion when configured SSID is
-// not visible in scan. Performs an hourly scan and auto-reconnects when found.
+// Session-scoped physical-button setup AP override. The compatibility recovery
+// flag is also true while the automatic fallback AP is active.
 bool wifi_is_in_recovery_mode(void);
+bool wifi_is_manual_ap_override(void);
 void wifi_enter_recovery_mode(void);
 
-// Exit recovery mode, disconnect STA, and remain AP-only. If clear_creds, also forgets WiFi creds.
-// On the button: call with false (keep creds, user can re-engage recovery later).
-// From web "Forget WiFi": call with true.
+// Exit the manual override. If clear_creds, forget station credentials and
+// enter provisioning AP mode while preserving the AP preference.
 void wifi_exit_recovery_mode(bool clear_creds);

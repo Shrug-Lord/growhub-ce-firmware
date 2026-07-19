@@ -11,6 +11,7 @@
 #include "freertos/task.h"
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <time.h>
 
 static const char *TAG = "schedule";
@@ -547,6 +548,147 @@ void schedule_clear(void)
     reset_active_schedule();
     clear_error();
     ESP_LOGI(TAG, "Schedule cleared");
+}
+
+static bool add_condition_json(cJSON *arr, const sched_condition_t *cond)
+{
+    cJSON *item = cJSON_CreateObject();
+    if (!item) return false;
+
+    switch (cond->type) {
+    case SCHED_COND_ALWAYS_ON:
+        cJSON_AddStringToObject(item, "type", "always_on");
+        break;
+    case SCHED_COND_TIME_WINDOW:
+        cJSON_AddStringToObject(item, "type", "time_window");
+        cJSON_AddStringToObject(item, "start", cond->start);
+        cJSON_AddStringToObject(item, "end", cond->end);
+        break;
+    case SCHED_COND_RH_LOW_BAND:
+        cJSON_AddStringToObject(item, "type", "rh_low_band");
+        cJSON_AddNumberToObject(item, "low", cond->low);
+        cJSON_AddNumberToObject(item, "high", cond->high);
+        break;
+    case SCHED_COND_RH_HIGH_BAND:
+        cJSON_AddStringToObject(item, "type", "rh_high_band");
+        cJSON_AddNumberToObject(item, "low", cond->low);
+        cJSON_AddNumberToObject(item, "high", cond->high);
+        break;
+    case SCHED_COND_TEMP_LOW_BAND_C:
+        cJSON_AddStringToObject(item, "type", "temp_low_band_c");
+        cJSON_AddNumberToObject(item, "low_c", cond->low);
+        cJSON_AddNumberToObject(item, "high_c", cond->high);
+        break;
+    case SCHED_COND_TEMP_HIGH_BAND_C:
+        cJSON_AddStringToObject(item, "type", "temp_high_band_c");
+        cJSON_AddNumberToObject(item, "low_c", cond->low);
+        cJSON_AddNumberToObject(item, "high_c", cond->high);
+        break;
+    case SCHED_COND_INTERVAL:
+        cJSON_AddStringToObject(item, "type", "interval");
+        cJSON_AddNumberToObject(item, "run_mins", cond->run_mins);
+        cJSON_AddNumberToObject(item, "every_hrs", cond->every_hrs);
+        if (cond->has_window) {
+            cJSON *window = cJSON_CreateObject();
+            if (!window) {
+                cJSON_Delete(item);
+                return false;
+            }
+            cJSON_AddStringToObject(window, "start", cond->window_start);
+            cJSON_AddStringToObject(window, "end", cond->window_end);
+            cJSON_AddItemToObject(item, "window", window);
+        }
+        break;
+    default:
+        cJSON_Delete(item);
+        return false;
+    }
+
+    cJSON_AddItemToArray(arr, item);
+    return true;
+}
+
+bool schedule_remove_entries_for_outlets(uint8_t outlet_mask)
+{
+    outlet_sched_t outlets[MAX_OUTLET_SCHEDS] = {0};
+    int count = schedule_get_outlets(outlets, MAX_OUTLET_SCHEDS);
+    if (count <= 0 || outlet_mask == 0) return false;
+
+    bool removed = false;
+    int kept = 0;
+    for (int i = 0; i < count; i++) {
+        if (outlets[i].id >= 1 && outlets[i].id <= 4 &&
+            (outlet_mask & (1 << (outlets[i].id - 1)))) {
+            removed = true;
+        } else {
+            kept++;
+        }
+    }
+    if (!removed) return false;
+
+    if (kept == 0) {
+        schedule_clear();
+        config_clear_schedule();
+        return true;
+    }
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON *arr = cJSON_CreateArray();
+    if (!root || !arr) {
+        cJSON_Delete(root);
+        cJSON_Delete(arr);
+        schedule_clear();
+        config_clear_schedule();
+        return true;
+    }
+    cJSON_AddNumberToObject(root, "v", 3);
+    cJSON_AddItemToObject(root, "outlets", arr);
+
+    bool ok = true;
+    for (int i = 0; i < count && ok; i++) {
+        if (outlets[i].id >= 1 && outlets[i].id <= 4 &&
+            (outlet_mask & (1 << (outlets[i].id - 1)))) {
+            continue;
+        }
+
+        cJSON *item = cJSON_CreateObject();
+        cJSON *conditions = cJSON_CreateArray();
+        if (!item || !conditions) {
+            cJSON_Delete(item);
+            cJSON_Delete(conditions);
+            ok = false;
+            break;
+        }
+        cJSON_AddNumberToObject(item, "id", outlets[i].id);
+        cJSON_AddItemToObject(item, "conditions", conditions);
+
+        for (int j = 0; j < outlets[i].condition_count; j++) {
+            if (!add_condition_json(conditions, &outlets[i].conditions[j])) {
+                ok = false;
+                break;
+            }
+        }
+        cJSON_AddItemToArray(arr, item);
+    }
+
+    char *payload = ok ? cJSON_PrintUnformatted(root) : NULL;
+    cJSON_Delete(root);
+    if (!payload) {
+        schedule_clear();
+        config_clear_schedule();
+        return true;
+    }
+
+    if (schedule_load(payload, (int)strlen(payload))) {
+        config_save_schedule(payload);
+    } else {
+        ESP_LOGW(TAG, "Schedule rebuild after assignment change failed: %s (outlet %d)",
+                 schedule_last_error_reason(), schedule_last_error_outlet());
+        schedule_clear();
+        config_clear_schedule();
+    }
+    free(payload);
+    return true;
 }
 
 bool schedule_is_active(void)

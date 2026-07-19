@@ -2,6 +2,28 @@
 
 GitHub Releases are the canonical home for published Growhub CE firmware artifacts.
 
+## Version Policy
+
+Growhub CE uses `MAJOR.MINOR.PATCHC`, where the trailing `C` identifies the
+Community Edition product line. This is a deliberate project convention rather
+than strict Semantic Versioning syntax; compatibility meaning follows
+[Semantic Versioning](https://semver.org/) for the three numeric components.
+
+- `PATCHC`, for example `1.1.1C`: compatible bug fixes after a release
+- `MINOR.0C`, for example `1.2.0C`: new backward-compatible functionality or
+  public MQTT/config contract additions after the previous minor scope freezes
+- next major, for example `2.0.0C`: intentionally incompatible public MQTT,
+  schedule, configuration, OTA, or documented behavior changes
+
+The amount of code changed does not determine the version. A release version
+may accumulate features and fixes until its scope is frozen, but published tag
+contents are immutable. The `1.1.0C` scope is frozen as the next firmware
+release and initial Command Center compatibility baseline. Further compatible
+feature work belongs in `1.2.0C`; post-release fixes belong in `1.1.1C`.
+
+Command Center is versioned separately. Its first planned release is `v0.1.0`
+and records the exact CE firmware commit and `1.1.0C` compatibility evidence.
+
 ## Release Assets
 
 Each tagged release should include:
@@ -37,8 +59,13 @@ The verified build command:
 Build from an existing local PlatformIO build without rebuilding:
 
 ```bash
-SKIP_BUILD=1 VERSION=v1.0.0C scripts/package-first-flash.sh
+SKIP_BUILD=1 VERSION=v1.1.0C scripts/package-first-flash.sh
 ```
+
+When called without `VERSION`, the packager uses `GROWHUB_VERSION` from
+`firmware/platformio.ini`. Local calls use PlatformIO's normal user core unless
+`PLATFORMIO_CORE_DIR` is explicitly set; the release workflow sets it to the
+repository-local core covered by the CI cache.
 
 The packager:
 
@@ -57,7 +84,7 @@ The workflow creates a draft release if one does not already exist, then uploads
 Manual run input:
 
 ```text
-version: v1.0.0C
+version: v1.1.0C
 ```
 
 ## Firmware File Meanings
@@ -86,4 +113,11 @@ Before writing, the first-flash script also dumps the device's current 4 MB flas
 - Confirm first boot exposes the `growhub_<last4mac>` WiFi AP.
 - Confirm web UI setup works at `http://192.168.4.1`.
 - Confirm `firmware.bin` works as a CE-to-CE web UI upload.
+- Complete the Command Center `CE-1.1.0C` hardware-contract checklist against
+  the exact firmware commit and record its binary hash. The runnable checklist
+  is `docs/release-evidence/CE-1.1.0C.md` in the companion Command Center
+  repository; its release validator requires every item to be checked and the
+  evidence record to be marked `Status: passed`.
+- Confirm the front button, operation LED, malfunction LED, setup-AP preference,
+  and recovery override on both Growhub and Growhub+ hardware.
 - Review draft release notes before publishing.

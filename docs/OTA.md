@@ -327,4 +327,5 @@ Only use this pattern when the device can route to `<host-ip>`.
 - signed-release verification pipeline inside the device
 - a richer in-device update manager or channel selector
 
-Those may be revisited later, but they are intentionally out of scope for the initial CE release.
+Those may be revisited later, but they remain intentionally out of scope for
+the CE `1.x` release series.

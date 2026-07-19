@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version or tag, for example v1.0.0C"
+        description: "Release version or tag, for example v1.1.0C"
         required: true
         type: string
 
@@ -65,6 +65,7 @@ jobs:
         id: package
         env:
           DISPATCH_VERSION: ${{ inputs.version }}
+          PLATFORMIO_CORE_DIR: ${{ github.workspace }}/firmware/.platformio-core
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME}"

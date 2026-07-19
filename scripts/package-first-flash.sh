@@ -6,7 +6,7 @@
 #
 # Lower-level packaging usage:
 #   scripts/package-first-flash.sh
-#   VERSION=v1.0.0C scripts/package-first-flash.sh
+#   VERSION=v1.1.0C scripts/package-first-flash.sh
 #   SKIP_BUILD=1 scripts/package-first-flash.sh
 
 set -euo pipefail
@@ -18,7 +18,14 @@ VENV_DIR="$FIRMWARE_DIR/.venv"
 PYTHON_BIN="$VENV_DIR/bin/python"
 PIP_BIN="$VENV_DIR/bin/pip"
 PIO_BIN="$VENV_DIR/bin/pio"
-PLATFORMIO_CORE_DIR="${PLATFORMIO_CORE_DIR:-$FIRMWARE_DIR/.platformio-core}"
+PLATFORMIO_CORE_DIR="${PLATFORMIO_CORE_DIR:-}"
+if [ -z "$PLATFORMIO_CORE_DIR" ]; then
+  if [ -n "${HOME:-}" ]; then
+    PLATFORMIO_CORE_DIR="$HOME/.platformio"
+  else
+    PLATFORMIO_CORE_DIR="$FIRMWARE_DIR/.platformio-core"
+  fi
+fi
 PIO_ENV="${PIO_ENV:-growhub}"
 BUILD_DIR="$FIRMWARE_DIR/.pio/build/$PIO_ENV"
 
@@ -58,6 +65,19 @@ ensure_venv() {
     log "Creating Python virtual environment in $VENV_DIR"
     python3 -m venv "$VENV_DIR"
   fi
+}
+
+ensure_pip() {
+  if "$PYTHON_BIN" -m pip --version >/dev/null 2>&1; then
+    return
+  fi
+
+  log "Bootstrapping pip in $VENV_DIR"
+  if ! "$PYTHON_BIN" -m ensurepip --upgrade --default-pip; then
+    die "pip is missing from $VENV_DIR and could not be bootstrapped with ensurepip."
+  fi
+  "$PYTHON_BIN" -m pip --version >/dev/null 2>&1 || \
+    die "pip is still unavailable after ensurepip completed."
 }
 
 ensure_platformio() {
@@ -108,8 +128,10 @@ detect_version() {
   local raw sanitized
 
   if [ -z "$VERSION" ]; then
-    raw="$(git -C "$REPO_DIR" describe --tags --always --dirty 2>/dev/null || true)"
-    VERSION="${raw:-dev}"
+    raw="$(sed -nE 's/^[[:space:]]*-DGROWHUB_VERSION=\\?"?([^\\"]+)\\?"?/\1/p' \
+      "$FIRMWARE_DIR/platformio.ini" | head -n 1)"
+    [ -n "$raw" ] || die "Could not read GROWHUB_VERSION from firmware/platformio.ini"
+    VERSION="v${raw#v}"
   fi
 
   sanitized="$(printf '%s' "$VERSION" | tr -c 'A-Za-z0-9._-' '-')"
@@ -174,32 +196,41 @@ write_bundle_readme() {
 Growhub CE First Flash
 ======================
 
-This bundle flashes Growhub CE firmware to a NIWA Growhub over UART.
+This bundle flashes Growhub CE firmware to an original NIWA Growhub or a
+Growhub+ over UART.
 
 Growhub CE is provided as-is, without warranty. Opening the controller and
 flashing third-party firmware can render the device unusable if wiring, power,
 or flashing steps are wrong. You are responsible for deciding whether to install
 it and for any damage, data loss, or device failure that may result.
 
-Hardware wiring:
+Growhub+ UART labels:
 
-  USB-to-TTL TXD -> Growhub R
-  USB-to-TTL RXD -> Growhub T
-  USB-to-TTL GND -> Growhub G
+  G O V T R G
+
+Original Growhub UART labels:
+
+  GND Boot 3.3V TX RX GND
+
+Hardware wiring (the signal names are equivalent):
+
+  USB-to-TTL TXD -> Growhub+ R / original Growhub RX
+  USB-to-TTL RXD -> Growhub+ T / original Growhub TX
+  USB-to-TTL GND -> Growhub+ G / original Growhub GND
   Leave USB-to-TTL 3.3V / VCC disconnected.
   Power the Growhub from its own power supply.
 
 To flash:
 
-  1. Bridge O to G on the Growhub UART header.
-  2. Power-cycle the Growhub while O and G are bridged.
+  1. Bridge O to G on Growhub+, or Boot to GND on the original Growhub.
+  2. Power-cycle the Growhub while the Boot signal is grounded.
   3. Run:
 
        ./flash-growhub-ce.sh
 
-  4. Leave O bridged to G until flashing starts.
+  4. Leave the Boot-to-ground bridge connected until flashing starts.
   5. The script backs up the current 4 MB flash before writing CE firmware.
-  6. When the script finishes, remove the O-to-G bridge and power-cycle normally.
+  6. When the script finishes, remove the bridge and power-cycle normally.
 
 Stock firmware backups are written to:
 
@@ -291,6 +322,7 @@ main() {
 
   ensure_python
   ensure_venv
+  ensure_pip
   ensure_platformio
   detect_version
   build_firmware

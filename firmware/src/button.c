@@ -32,12 +32,12 @@ static void button_task(void *arg)
             }
         } else {
             if (held_ms >= WIFI_RECOVERY_HOLD_MS) {
-                // Medium hold: WiFi Recovery Mode toggle
-                ESP_LOGI(TAG, "Button medium hold (%d ms) — WiFi Recovery toggle", held_ms);
-                if (wifi_is_in_recovery_mode()) {
-                    wifi_exit_recovery_mode(false);  // disconnect, keep creds
+                // Medium hold: session setup AP override toggle
+                ESP_LOGI(TAG, "Button medium hold (%d ms) — setup AP override", held_ms);
+                if (wifi_is_manual_ap_override()) {
+                    wifi_exit_recovery_mode(false);  // cancel session AP override
                 } else if (config_get()->sta_ssid[0] != '\0') {
-                    wifi_enter_recovery_mode();  // re-engage
+                    wifi_enter_recovery_mode();  // immediate session AP override
                 } else {
                     ESP_LOGI(TAG, "No WiFi credentials — medium hold ignored");
                 }

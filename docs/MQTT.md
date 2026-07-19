@@ -2,7 +2,9 @@
 
 MQTT is optional in Community Edition firmware. A single Growhub runs fully standalone with WiFi + the built-in web UI. MQTT exists to integrate with a local broker and, optionally, a separate fleet-management companion such as Growhub Command Center.
 
-This document describes the public MQTT interface targeted for the first CE release: topic schema, payloads, schedule format, and the NVS keys that affect MQTT behavior.
+This document describes the public MQTT interface for the frozen CE `1.1.0C`
+baseline: topic schema, payloads, schedule format, and the NVS keys that affect
+MQTT behavior.
 
 ## Transport and connection model
 
@@ -39,9 +41,14 @@ The public CE contract uses these topic names:
 
 - `growhub/<MAC>/sensor/live`
 - `growhub/<MAC>/status`
+- `growhub/<MAC>/outlets/state`
+- `growhub/<MAC>/outlets/config`
+- `growhub/<MAC>/outlets/error`
 - `growhub/<MAC>/schedule/state`
 - `growhub/<MAC>/schedule/action`
 - `growhub/<MAC>/schedule/error`
+- `growhub/<MAC>/time/action`
+- `growhub/<MAC>/time/error`
 - `growhub/<MAC>/control/error`
 - `growhub/<MAC>/control/mode`
 - `growhub/<MAC>/control/relay`
@@ -60,6 +67,59 @@ Device presence topic.
 - QoS: `1`
 - Retained: yes
 
+### `growhub/<MAC>/outlets/state`
+
+Retained outlet assignment and label state published by the firmware. Command
+Center should treat this as the source of truth for outlet assignments and use
+it to preflight schedule editors before publishing `grow` schedules. Labels are
+display metadata used to disambiguate duplicate assignments.
+
+- Published when MQTT connects/reconnects
+- Published after accepted `outlets/config` writes
+- Published after local web UI outlet assignment or label changes
+- QoS: `1`
+- Retained: yes
+
+Payload shape:
+
+```json
+{
+  "v": 1,
+  "source": "local",
+  "outlets": [
+    { "id": 1, "assignment": "Light", "label": "Canopy Light" },
+    { "id": 2, "assignment": "Fan", "label": "Exhaust Fan" },
+    { "id": 3, "assignment": "Fan", "label": "Circulation Fan" },
+    { "id": 4, "assignment": "Water Pump", "label": "Reservoir Pump" }
+  ]
+}
+```
+
+Fields:
+
+- `v`: outlet assignment/label state schema version, currently `1`
+- `source`: informational, currently `local`, `mqtt`, or `reconnect`
+- `outlets[].id`: physical outlet ID `1`-`4`
+- `outlets[].assignment`: one of the stable assignment enum values
+- `outlets[].label`: firmware-owned display label. Empty stored labels publish
+  as `Outlet N`.
+
+Stable assignment enum:
+
+- `None`
+- `Light`
+- `Fan`
+- `Humidifier`
+- `Dehumidifier`
+- `Water Pump`
+- `Heater`
+- `AC Controller`
+
+The MQTT payload uses physical outlet IDs. Firmware still stores assignments in
+the existing relay-name NVS slots: `relay_0` = Outlet 2, `relay_1` = Outlet 3,
+`relay_2` = Outlet 4, `relay_3` = Outlet 1. Labels are stored separately in
+matching `label_0`-`label_3` NVS slots.
+
 ### `growhub/<MAC>/schedule/state`
 
 Retained active schedule mirror published by the firmware.
@@ -68,6 +128,7 @@ Retained active schedule mirror published by the firmware.
 - Published after accepted `grow` schedule writes
 - Published after local web UI schedule save/clear
 - Published after relay mode changes from the web UI or MQTT
+- Published after outlet assignment changes clear affected schedule entries
 - Published when `time_warning` or `sensor_warning` appears or clears, even if relay outputs do not change
 - QoS: `1`
 - Retained: yes
@@ -130,7 +191,8 @@ Payload shape:
 ```
 
 When no schedule is active, `active` is `false` and `schedule` is `null`.
-`source` is informational and currently uses `local`, `mqtt`, or `reconnect`.
+`source` is informational and currently uses `local`, `mqtt`, `time`, or
+`reconnect`.
 Consumers should treat the firmware-published state as the device's active
 runtime state.
 
@@ -171,7 +233,7 @@ Warning entries keep client logic stable without parsing user-facing text:
 }
 ```
 
-`outlets` is optional. It lists affected physical outlet IDs when a warning applies to specific scheduled outlets. Omitted or empty `outlets` means the warning is device-wide. Warning entries do not copy outlet labels or assignments; clients resolve the numeric outlet IDs against the current outlet assignment/config state when they need display names. `time_sync_required` includes affected outlets when wall-clock automation is actually blocked, and `sensor_data_unavailable` includes affected outlets when temp/rH automation is paused. `time_sntp_unhealthy` stays device-wide because it is a drift/sync risk, not a specific outlet block.
+`outlets` is optional. It lists affected physical outlet IDs when a warning applies to specific scheduled outlets. Omitted or empty `outlets` means the warning is device-wide. Warning entries do not copy outlet labels or assignments; clients resolve the numeric outlet IDs against retained `outlets/state` when they need display names. `time_sync_required` includes affected outlets when wall-clock automation is actually blocked, and `sensor_data_unavailable` includes affected outlets when temp/rH automation is paused. `time_sntp_unhealthy` stays device-wide because it is a drift/sync risk, not a specific outlet block.
 
 `message` is firmware-owned default display copy for the local web UI and simple clients. Clients that need stable behavior must use `code`, not parse `message`. Companion apps may render their own product-specific copy from `code` while preserving the warning meaning and severity.
 
@@ -215,6 +277,33 @@ Unknown future reasons should fall back to a generic rejected-command message.
 | `invalid_relay_mask` | `control/relay` payload is not a decimal bitmask from `0` to `15` |
 | `manual_mode_required` | Direct relay writes are rejected while the device is in AUTO |
 
+### `growhub/<MAC>/time/error`
+
+Published when a time action is rejected.
+
+- QoS: `1`
+- Retained: no
+
+Example:
+
+```json
+{
+  "command": "time/action",
+  "reason": "invalid_epoch"
+}
+```
+
+`reason` is a fixed v1 enum. Clients should branch on `reason`, not debug
+text. Unknown future reasons should fall back to a generic rejected-time-action
+message.
+
+| Reason | Meaning |
+|---|---|
+| `invalid_payload` | Payload is malformed JSON or missing fields required for parsing |
+| `unsupported_time_action_version` | Time action `v` is not `1` |
+| `unsupported_action` | `action` is not `sync_epoch` |
+| `invalid_epoch` | `epoch` is missing, not an integer, or outside the firmware's accepted wall-time range |
+
 ### `growhub/<MAC>/schedule/error`
 
 Published when a schedule payload or schedule-owned action is rejected.
@@ -256,6 +345,38 @@ rejected-action message.
 | `time_sync_required` | Windowed action cannot run until valid wall time exists |
 | `pump_window_ineligible` | Pump run cannot fit in the current allowed-hours window |
 
+### `growhub/<MAC>/outlets/error`
+
+Published when an outlet assignment/label write is rejected.
+
+- QoS: `1`
+- Retained: no
+
+Example:
+
+```json
+{
+  "reason": "invalid_assignment",
+  "outlet": 4,
+  "detail": "optional debugging text"
+}
+```
+
+`reason` is a fixed v1 enum. Clients should branch on `reason`, not `detail`.
+Unknown future reasons should fall back to a generic rejected-outlet-config
+message.
+
+| Reason | Meaning |
+|---|---|
+| `invalid_payload` | Payload is malformed JSON or missing fields required for parsing |
+| `unsupported_outlet_config_version` | Outlet config `v` is not `1` |
+| `missing_outlets` | `outlets` is missing or is not a full four-outlet replacement |
+| `invalid_outlet` | Outlet ID is missing or outside `1`-`4` |
+| `duplicate_outlet` | The same outlet ID appears more than once |
+| `invalid_assignment` | Assignment is missing or is not one of the stable assignment enum values |
+| `invalid_label` | Label is not a string, exceeds the firmware label limit, or contains unsupported control characters |
+| `write_failed` | Firmware could not persist the accepted assignment/label set to NVS |
+
 ### `growhub/<MAC>/sensor/live`
 
 Live telemetry payload published by the main sensor loop when MQTT is connected.
@@ -270,7 +391,7 @@ Payload shape:
 {
   "nId": "AABBCCDDEEFF",
   "name": "GrowHub_B2C3",
-  "fw": "1.0.0C",
+  "fw": "1.1.0C",
   "data": [
     {
       "l": 75,
@@ -385,6 +506,74 @@ Behavior:
 - clients should confirm success from `schedule/state` or failure from `schedule/error`
 - pump action rejection reasons use the fixed `schedule/error` enum: `pump_schedule_required`, `auto_mode_required`, `pump_window_ineligible`, or `time_sync_required`
 
+### `growhub/<MAC>/time/action`
+
+Payload is JSON for setting the current wall time without changing configured
+time source, timezone, or SNTP servers:
+
+- QoS: `1`
+- Retained: no
+
+```json
+{
+  "v": 1,
+  "action": "sync_epoch",
+  "epoch": 1780000000
+}
+```
+
+Behavior:
+
+- clients must publish time actions as non-retained messages
+- `v` must be `1`
+- `action` must be `sync_epoch`
+- `epoch` must be an integer Unix epoch accepted by the firmware wall-time
+  sanity check; current firmware uses the same threshold as `/savetime`
+- accepted actions set device wall time but do not change `timeSrc`
+- accepted actions do not change timezone, SNTP server config, or relay mode
+- if the device is in AUTO mode, firmware evaluates the active schedule
+  immediately after setting wall time
+- accepted actions publish retained `schedule/state` with updated time health
+  fields and source `time`
+- rejected actions publish `time/error` and leave wall time unchanged
+
+### `growhub/<MAC>/outlets/config`
+
+Payload is a full replacement outlet assignment and label document.
+
+- QoS: `1`
+- Retained: no
+
+```json
+{
+  "v": 1,
+  "outlets": [
+    { "id": 1, "assignment": "Light", "label": "Canopy Light" },
+    { "id": 2, "assignment": "Fan", "label": "Exhaust Fan" },
+    { "id": 3, "assignment": "Fan", "label": "Circulation Fan" },
+    { "id": 4, "assignment": "Water Pump", "label": "Reservoir Pump" }
+  ]
+}
+```
+
+Behavior:
+
+- clients must publish outlet config writes as non-retained messages
+- payload must include exactly one entry for each physical outlet ID `1`-`4`
+- assignment values must come from the stable assignment enum documented under `outlets/state`
+- `label` is optional for backward-compatible writes; when omitted or empty,
+  firmware stores an empty label and retained `outlets/state` publishes the
+  fallback `Outlet N`
+- labels are trimmed, limited to 32 bytes, and must not contain ASCII control characters
+- invalid writes publish `outlets/error` and leave existing assignments and labels unchanged
+- accepted writes persist assignments to `relay_0`-`relay_3`, labels to
+  `label_0`-`label_3`, and publish retained `outlets/state`
+- label-only changes publish retained `outlets/state` and do not clear schedule
+  entries, publish `schedule/state`, evaluate AUTO mode, or affect relay state
+- when an accepted write changes any assignment, firmware clears affected outlet schedule entries, clears their local schedule-pause bits, publishes `schedule/state`, and leaves the new assignment without a default schedule
+- in AUTO mode, affected outlets without active schedule entries are turned OFF by the immediate schedule evaluation
+- in MANUAL mode, relay outputs are left unchanged
+
 ### `growhub/<MAC>/config`
 
 Payload is JSON. Current firmware recognizes these fields:
@@ -413,17 +602,25 @@ Behavior:
 
 - Missing fields are left unchanged
 - Time source, timezone, and SNTP server changes apply immediately
-- Browser sync can set valid wall time without changing `timeSrc`
+- Browser sync and MQTT `time/action` can set valid wall time without changing `timeSrc`
 - Offsets are persisted as hundredths in NVS
-- Device name, MQTT host, and relay names are not remotely configurable through this MQTT topic
+- Device name and MQTT host are not remotely configurable through this MQTT
+  topic; outlet assignments and labels use `outlets/config`
 
 ### `growhub/<MAC>/grow`
 
 Payload is a CE v3 outlet-condition schedule document.
 
+Clients should subscribe to retained `growhub/<MAC>/outlets/state` before
+building or loading schedule templates. Preflight schedule conditions against
+that assignment state, use labels to disambiguate duplicate assignments in the
+Command Center UI, then publish the v3 schedule. Firmware still validates
+against its current persisted assignments and rejects mismatches. Labels are not
+schedule validation inputs.
+
 On receipt, the schedule is:
 
-1. validated against the current outlet assignments
+1. validated against the current firmware-owned outlet assignments
 2. loaded into the active schedule engine
 3. persisted to NVS as `sched_json`
 4. published back to `growhub/<MAC>/schedule/state`
@@ -448,7 +645,8 @@ This is intended for CE-to-CE OTA, not first flash from stock firmware.
 
 ### V3 outlet-condition format
 
-This is the public schedule format for the first CE release.
+This is the public schedule format introduced by `v1.0.0C` and retained by the
+`v1.1.0C` baseline.
 
 ```json
 {
@@ -518,19 +716,22 @@ Allowed conditions by outlet assignment:
 | AC Controller | `temp_high_band_c` |
 | Water Pump | one `interval` per Water Pump outlet |
 
-Schedule editors should use this table to decide control visibility. Unsupported
-condition controls are hidden rather than shown disabled. Newly assigned outlets
-start with no selected schedule conditions; persisted schedule entries include
-only the conditions the user chooses. A local UI pause can exclude an outlet from
-evaluation without deleting its saved rules. Firmware still validates incoming
-schedule payloads and rejects unsupported combinations.
+Schedule editors should resolve outlet assignments from retained `outlets/state`
+and use this table to decide control visibility. They should use labels from the
+same state to distinguish duplicate assignments, such as two Fans or two Water
+Pumps. Unsupported condition controls are hidden rather than shown disabled.
+Newly assigned outlets start with no selected schedule conditions; persisted
+schedule entries include only the conditions the user chooses. A local UI pause
+can exclude an outlet from evaluation without deleting its saved rules. Firmware
+still validates incoming schedule payloads against current firmware-owned
+assignments and rejects unsupported combinations.
 
 Runtime behavior:
 
 - The schedule task evaluates every `30` seconds
 - Changing an outlet assignment clears that outlet's schedule entry without creating a replacement/default schedule; in AUTO, that outlet turns OFF immediately, while MANUAL leaves relay outputs unchanged
 - The new outlet assignment remains without an active schedule entry until the user or Command Center saves a schedule for it
-- Wall-clock conditions require valid wall time from SNTP or browser sync
+- Wall-clock conditions require valid wall time from SNTP, browser sync, or MQTT `time/action`
 - `time_warning` is not AUTO-only; it may be non-empty in MANUAL mode when the configured time source is unhealthy
 - `time_warning` appearance or clearance publishes `schedule/state` immediately even when relay outputs are unchanged
 - Sensor conditions fail inactive when the required sensor reading is invalid, unavailable, or older than 120 seconds
@@ -578,9 +779,9 @@ Validation rules:
 - if a pump interval has an allowed-hours `window`, the window duration must be at least `run_mins`
 - invalid condition/assignment combinations are rejected
 
-CE is pre-public-release, so v2 schedule compatibility is intentionally not
-part of the public contract. Stored v2 schedules are rejected, logged, and
-cleared on boot.
+Schedule v2 was a bench-only format replaced before public `v1.0.0C`, which
+shipped schedule v3. V2 compatibility is therefore not part of the public
+contract. Stored v2 schedules are rejected, logged, and cleared on boot.
 
 ## Local-control interaction rules
 
@@ -594,7 +795,7 @@ Conflict policy:
 - local web UI saves and MQTT `grow` writes update the same active schedule
 - accepted schedule writes publish `schedule/state`
 - empty schedules are rejected and are not treated as clear commands
-- changing an outlet assignment clears that outlet's schedule entry, does not create a replacement/default schedule, and publishes `schedule/state`
+- changing an outlet assignment clears that outlet's schedule entry, does not create a replacement/default schedule, and publishes `outlets/state` plus `schedule/state`
 - clearing the schedule in auto mode turns scheduled outlets OFF and publishes `schedule/state`
 - clearing the schedule in manual mode leaves relay outputs unchanged and publishes `schedule/state`
 - rejected schedule writes publish `schedule/error` and leave the previous active schedule unchanged
@@ -615,14 +816,17 @@ All current config lives in the `growhub` namespace.
 | `mqtt_host` | string | Broker hostname or IP |
 | `mqtt_port` | `u16` | Broker port |
 | `mqtt_dis` | `u8` | Soft-disable flag, `1` = disabled |
+| `keep_ap` | `u8` | Setup AP preference, `1` = always active, `0` = fallback only |
 | `report_s` | `u8` | Sensor publish interval in seconds |
 | `relay_mode` | `u8` | `0` = auto, `1` = manual |
+| `relay_0`-`relay_3` | string | Outlet assignments; slot 0 = Outlet 2, slot 1 = Outlet 3, slot 2 = Outlet 4, slot 3 = Outlet 1 |
+| `label_0`-`label_3` | string | Outlet labels using the same slot mapping as `relay_0`-`relay_3`; empty means publish fallback `Outlet N` |
 | `sched_json` | blob | Persisted schedule payload |
 | `sched_dis` | `u8` | Local web UI schedule-pause mask; bit0 = Outlet 1 through bit3 = Outlet 4 |
 | `dev_name` | string | Device name used in payloads |
 | `timezone` | string | POSIX timezone string |
 | `temp_unit` | `u8` | UI display unit; MQTT telemetry still sends Celsius |
-| `time_src` | `u8` | `0` = SNTP, `1` = manual browser-set time |
+| `time_src` | `u8` | `0` = SNTP, `1` = manual external-set time |
 | `sntp_primary` | string | Primary SNTP server hostname |
 | `sntp_secondary` | string | Secondary SNTP server hostname |
 | `temp_off` | `i16` | Temperature calibration offset times 100 |
@@ -633,7 +837,12 @@ Behavior details:
 - Saving MQTT host/port through the web UI implicitly clears `mqtt_dis`
 - Disconnecting Command Center from the web UI sets `mqtt_dis=1` but preserves `mqtt_host` and `mqtt_port`
 - Received schedules persist across reboot because `sched_json` is saved on MQTT receipt
+- Received outlet assignment and label writes persist across reboot because
+  `relay_0`-`relay_3` and `label_0`-`label_3` are saved on accepted
+  `outlets/config`
 - SNTP server changes apply immediately and are published back through time health fields on `schedule/state`
+- MQTT `time/action` sets only current wall time; it does not persist NVS config
+  or change `time_src`, timezone, or SNTP server keys
 
 ## Practical assumptions for external tooling
 
@@ -642,3 +851,5 @@ Behavior details:
 - Prefer CE v3 schedule payloads for new tooling.
 - Do not assume TLS, auth, or server-side broker ACLs are present unless the operator adds them externally.
 - Treat the MQTT OTA topic as a privileged control path on the trusted LAN.
+- The outlet assignment/label topics and `time/action` are additive public MQTT
+  contracts introduced in the frozen `1.1.0C` minor-release scope.

@@ -12,7 +12,7 @@ The Community Edition firmware in this repo. A clean-room replacement for [[stoc
 
 ## Growhub Command Center
 
-A separate companion repository (`github.com/Shrug-Lord/Growhub-Command-Center`, not yet public) that consumes the MQTT data published by [[CE firmware]] devices. Provides logs, historic tracking, a polished UI, and a single pane for managing multiple [[device]]s. Not required to operate a single controller — [[CE firmware]] is fully functional standalone. Command Center is the v2-and-beyond growth path for the project.
+A separate companion repository (`github.com/Shrug-Lord/Growhub-Command-Center`, not yet shipped) that consumes the MQTT data published by [[CE firmware]] devices. Provides logs, historic tracking, a polished UI, and a single pane for managing multiple [[device]]s. Not required to operate a single controller — [[CE firmware]] is fully functional standalone. Its initial tested firmware baseline is CE `1.1.0C`, with runtime workflows gated by validated MQTT capabilities and payload contract versions rather than the display-version string alone.
 
 ## first flash
 
@@ -24,15 +24,23 @@ A firmware update delivered over the air to a device already running [[CE firmwa
 
 ## device
 
-A single NIWA Growhub unit. Identified by its WiFi MAC address (12 hex chars, e.g. `FCE8C0XXXXXX` — first 6 are NIWA's OUI). The repo currently tracks two physical bench units for development; in the field, every CE-firmware device is independent.
+A single NIWA Growhub or Growhub+ unit. Identified by its WiFi MAC address as 12 uppercase hex characters; do not assume one OUI across product variants. The repo currently tracks three physical bench units for development: two Growhub+ units and one original Growhub. In the field, every CE-firmware device is independent.
+
+## setup access point
+
+The WiFi network broadcast directly by a [[device]] for local provisioning and recovery. Distinct from the home WiFi network that the device joins for normal standalone operation.
 
 ## outlet
 
-One of the four switched AC outlets on the Growhub's rear, controlled by a relay GPIO on the ESP32. Numbered 1-4. The community convention in code, docs, and UI is **outlet**, not "socket". User-facing labels are optional outlet assignments; unassigned outlets have no label.
+One of the four switched AC outlets on the Growhub's rear, controlled by a relay GPIO on the ESP32. Numbered 1-4. The community convention in code, docs, and UI is **outlet**, not "socket". User-facing outlet labels are separate from outlet assignments.
 
 ## outlet assignment
 
-The user-selected equipment type plugged into an [[outlet]], such as `Light`, `Fan`, `Humidifier`, `Dehumidifier`, `Water Pump`, `Heater`, or `AC Controller`. Scheduling options are discussed in terms of outlet assignments, not "connected devices"; [[device]] is reserved for a Growhub unit.
+The user-selected equipment type plugged into an [[outlet]], such as `Light`, `Fan`, `Humidifier`, `Dehumidifier`, `Water Pump`, `Heater`, or `AC Controller`. Scheduling options and schedule validation are based on outlet assignments, not outlet labels or "connected devices"; [[device]] is reserved for a Growhub unit.
+
+## outlet label
+
+The user-facing role or name for a physical [[outlet]], such as `Exhaust Fan`, `Circulation Fan`, `Reservoir Pump`, or `Canopy Light`. Labels help Command Center disambiguate duplicate assignments when compiling portable schedule templates. Labels do not control firmware schedule validation.
 
 ## schedule condition
 
@@ -44,7 +52,7 @@ Direct user or API control of outlet relays while scheduling is paused. Manual o
 
 ## valid wall time
 
-The controller's current clock time is trustworthy enough to evaluate wall-clock schedule conditions such as time windows. Sensor-based conditions and pure uptime-based intervals can continue without valid wall time, but wall-clock conditions stay inactive until time is available from SNTP or browser sync. A missing valid wall time is user-visible only when an active AUTO schedule contains a wall-clock condition.
+The controller's current clock time is trustworthy enough to evaluate wall-clock schedule conditions such as time windows. Sensor-based conditions and pure uptime-based intervals can continue without valid wall time, but wall-clock conditions stay inactive until time is available from SNTP, browser sync, or the MQTT `time/action` sync. A missing valid wall time is user-visible only when an active AUTO schedule contains a wall-clock condition.
 
 ## SNTP server
 
@@ -52,7 +60,7 @@ A user-configurable network time source used when the controller is set to SNTP 
 
 ## relay
 
-The physical solid-state relay (and its GPIO) backing a single [[outlet]]. The default mapping is `outlet 1 -> GPIO 33`, `outlet 2 -> GPIO 25`, `outlet 3 -> GPIO 26`, `outlet 4 -> GPIO 27`. "Relay" refers to the implementation; "outlet" is what the user sees.
+The physical electromechanical relay (and its GPIO) backing a single [[outlet]]. The default mapping is `outlet 1 -> GPIO 33`, `outlet 2 -> GPIO 25`, `outlet 3 -> GPIO 26`, `outlet 4 -> GPIO 27`. "Relay" refers to the implementation; "outlet" is what the user sees.
 
 ## ota_0 / ota_1 / factory partition
 

@@ -29,6 +29,21 @@ static char s_topic_schedule_action[96];
 static char s_topic_schedule_error[96];
 static char s_topic_schedule_state[96];
 static char s_topic_control_error[96];
+static char s_topic_time_action[96];
+static char s_topic_time_error[96];
+static char s_topic_outlets_config[96];
+static char s_topic_outlets_error[96];
+static char s_topic_outlets_state[96];
+
+// Display outlet N maps to relay_names slot: O1->slot3, O2->slot0,
+// O3->slot1, O4->slot2.
+static const int OUTLET_SLOT[4] = {3, 0, 1, 2};
+
+static const char *VALID_ASSIGNMENTS[] = {
+    "None", "Light", "Fan", "Humidifier",
+    "Dehumidifier", "Water Pump", "Heater", "AC Controller",
+};
+#define VALID_ASSIGNMENT_COUNT (sizeof(VALID_ASSIGNMENTS) / sizeof(VALID_ASSIGNMENTS[0]))
 
 static void build_topics(void)
 {
@@ -44,6 +59,11 @@ static void build_topics(void)
     snprintf(s_topic_schedule_error, sizeof(s_topic_schedule_error), "growhub/%s/schedule/error", mac);
     snprintf(s_topic_schedule_state,sizeof(s_topic_schedule_state),"growhub/%s/schedule/state", mac);
     snprintf(s_topic_control_error, sizeof(s_topic_control_error), "growhub/%s/control/error", mac);
+    snprintf(s_topic_time_action,   sizeof(s_topic_time_action),   "growhub/%s/time/action", mac);
+    snprintf(s_topic_time_error,    sizeof(s_topic_time_error),    "growhub/%s/time/error", mac);
+    snprintf(s_topic_outlets_config, sizeof(s_topic_outlets_config), "growhub/%s/outlets/config", mac);
+    snprintf(s_topic_outlets_error,  sizeof(s_topic_outlets_error),  "growhub/%s/outlets/error", mac);
+    snprintf(s_topic_outlets_state,  sizeof(s_topic_outlets_state),  "growhub/%s/outlets/state", mac);
 }
 
 static void subscribe_all(void)
@@ -53,8 +73,10 @@ static void subscribe_all(void)
     esp_mqtt_client_subscribe(s_client, s_topic_config,        1);
     esp_mqtt_client_subscribe(s_client, s_topic_grow,          1);
     esp_mqtt_client_subscribe(s_client, s_topic_schedule_action, 1);
+    esp_mqtt_client_subscribe(s_client, s_topic_time_action, 1);
+    esp_mqtt_client_subscribe(s_client, s_topic_outlets_config, 1);
     esp_mqtt_client_subscribe(s_client, s_topic_ota,           1);
-    ESP_LOGI(TAG, "Subscribed to control/config/grow/schedule-action/ota topics");
+    ESP_LOGI(TAG, "Subscribed to control/config/grow/schedule-action/time/outlets/ota topics");
 }
 
 static int relay_bit_for_outlet(int outlet_id)
@@ -82,6 +104,55 @@ static bool parse_payload_int(const char *data, int len, int *out)
     return true;
 }
 
+static bool json_number_is_int(cJSON *item)
+{
+    return item && cJSON_IsNumber(item) && item->valuedouble == (double)item->valueint;
+}
+
+static const char *assignment_for_outlet(int outlet_id)
+{
+    if (outlet_id < 1 || outlet_id > 4) return "None";
+
+    const growhub_config_t *cfg = config_get();
+    const char *assignment = cfg->relay_names[OUTLET_SLOT[outlet_id - 1]];
+    return assignment && assignment[0] ? assignment : "None";
+}
+
+static void label_for_outlet(int outlet_id, char *out, size_t len)
+{
+    if (outlet_id < 1 || outlet_id > 4) {
+        if (out && len > 0) out[0] = '\0';
+        return;
+    }
+
+    const growhub_config_t *cfg = config_get();
+    config_outlet_label_or_default(
+        outlet_id,
+        cfg->outlet_labels[OUTLET_SLOT[outlet_id - 1]],
+        out,
+        len);
+}
+
+static bool assignment_to_storage(const char *assignment,
+                                  char dest[MAX_RELAY_NAME_LEN + 1])
+{
+    if (!assignment) return false;
+
+    for (size_t i = 0; i < VALID_ASSIGNMENT_COUNT; i++) {
+        if (strcmp(assignment, VALID_ASSIGNMENTS[i]) != 0) continue;
+
+        if (strcmp(assignment, "None") == 0) {
+            dest[0] = '\0';
+        } else {
+            strncpy(dest, assignment, MAX_RELAY_NAME_LEN);
+            dest[MAX_RELAY_NAME_LEN] = '\0';
+        }
+        return true;
+    }
+
+    return false;
+}
+
 static void publish_control_error(const char *command, const char *reason)
 {
     if (!s_connected || !s_client) return;
@@ -96,6 +167,41 @@ static void publish_control_error(const char *command, const char *reason)
     if (!payload) return;
 
     esp_mqtt_client_publish(s_client, s_topic_control_error, payload, 0, 1, 0);
+    free(payload);
+}
+
+static void publish_time_error(const char *reason)
+{
+    if (!s_connected || !s_client) return;
+
+    cJSON *root = cJSON_CreateObject();
+    if (!root) return;
+    cJSON_AddStringToObject(root, "command", "time/action");
+    cJSON_AddStringToObject(root, "reason", reason ? reason : "invalid_payload");
+
+    char *payload = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!payload) return;
+
+    esp_mqtt_client_publish(s_client, s_topic_time_error, payload, 0, 1, 0);
+    free(payload);
+}
+
+static void publish_outlets_error(const char *reason, int outlet, const char *detail)
+{
+    if (!s_connected || !s_client) return;
+
+    cJSON *root = cJSON_CreateObject();
+    if (!root) return;
+    cJSON_AddStringToObject(root, "reason", reason ? reason : "invalid_payload");
+    if (outlet > 0) cJSON_AddNumberToObject(root, "outlet", outlet);
+    if (detail && detail[0]) cJSON_AddStringToObject(root, "detail", detail);
+
+    char *payload = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!payload) return;
+
+    esp_mqtt_client_publish(s_client, s_topic_outlets_error, payload, 0, 1, 0);
     free(payload);
 }
 
@@ -307,6 +413,156 @@ static void add_warning(cJSON *warnings,
     cJSON_AddItemToArray(warnings, warning);
 }
 
+static bool parse_outlets_config(const char *data,
+                                 int len,
+                                 char relay_names[NUM_RELAY_SLOTS][MAX_RELAY_NAME_LEN + 1],
+                                 char outlet_labels[NUM_RELAY_SLOTS][MAX_OUTLET_LABEL_LEN + 1],
+                                 uint8_t *changed_outlet_mask,
+                                 bool *labels_changed)
+{
+    cJSON *root = cJSON_ParseWithLength(data, len);
+    if (!root || !cJSON_IsObject(root)) {
+        cJSON_Delete(root);
+        publish_outlets_error("invalid_payload", 0, NULL);
+        return false;
+    }
+
+    cJSON *vfield = cJSON_GetObjectItem(root, "v");
+    if (!json_number_is_int(vfield)) {
+        cJSON_Delete(root);
+        publish_outlets_error("invalid_payload", 0, NULL);
+        return false;
+    }
+    if (vfield->valueint != 1) {
+        cJSON_Delete(root);
+        publish_outlets_error("unsupported_outlet_config_version", 0, NULL);
+        return false;
+    }
+
+    cJSON *outlets = cJSON_GetObjectItem(root, "outlets");
+    if (!outlets || !cJSON_IsArray(outlets) || cJSON_GetArraySize(outlets) != 4) {
+        cJSON_Delete(root);
+        publish_outlets_error("missing_outlets", 0, NULL);
+        return false;
+    }
+
+    bool seen[4] = {0};
+    const growhub_config_t *cfg = config_get();
+    for (int i = 0; i < NUM_RELAY_SLOTS; i++) {
+        strncpy(relay_names[i], cfg->relay_names[i], MAX_RELAY_NAME_LEN);
+        relay_names[i][MAX_RELAY_NAME_LEN] = '\0';
+        outlet_labels[i][0] = '\0';
+    }
+
+    cJSON *item = NULL;
+    cJSON_ArrayForEach(item, outlets) {
+        if (!cJSON_IsObject(item)) {
+            cJSON_Delete(root);
+            publish_outlets_error("invalid_payload", 0, NULL);
+            return false;
+        }
+
+        cJSON *jid = cJSON_GetObjectItem(item, "id");
+        if (!json_number_is_int(jid) || jid->valueint < 1 || jid->valueint > 4) {
+            cJSON_Delete(root);
+            publish_outlets_error("invalid_outlet", 0, NULL);
+            return false;
+        }
+
+        int outlet_id = jid->valueint;
+        if (seen[outlet_id - 1]) {
+            cJSON_Delete(root);
+            publish_outlets_error("duplicate_outlet", outlet_id, NULL);
+            return false;
+        }
+        seen[outlet_id - 1] = true;
+
+        cJSON *jassignment = cJSON_GetObjectItem(item, "assignment");
+        if (!jassignment || !cJSON_IsString(jassignment)) {
+            cJSON_Delete(root);
+            publish_outlets_error("invalid_assignment", outlet_id, NULL);
+            return false;
+        }
+
+        int slot = OUTLET_SLOT[outlet_id - 1];
+        if (!assignment_to_storage(jassignment->valuestring, relay_names[slot])) {
+            cJSON_Delete(root);
+            publish_outlets_error("invalid_assignment", outlet_id, NULL);
+            return false;
+        }
+
+        cJSON *jlabel = cJSON_GetObjectItem(item, "label");
+        if (jlabel && !cJSON_IsString(jlabel)) {
+            cJSON_Delete(root);
+            publish_outlets_error("invalid_label", outlet_id, NULL);
+            return false;
+        }
+        if (!config_normalize_outlet_label(jlabel ? jlabel->valuestring : "",
+                                           outlet_labels[slot])) {
+            cJSON_Delete(root);
+            publish_outlets_error("invalid_label", outlet_id, NULL);
+            return false;
+        }
+    }
+
+    for (int i = 0; i < 4; i++) {
+        if (!seen[i]) {
+            cJSON_Delete(root);
+            publish_outlets_error("missing_outlets", 0, NULL);
+            return false;
+        }
+    }
+
+    uint8_t changed = 0;
+    bool label_changed = false;
+    for (int outlet_id = 1; outlet_id <= 4; outlet_id++) {
+        int slot = OUTLET_SLOT[outlet_id - 1];
+        if (strncmp(cfg->relay_names[slot], relay_names[slot], MAX_RELAY_NAME_LEN) != 0) {
+            changed |= (1 << (outlet_id - 1));
+        }
+        if (strncmp(cfg->outlet_labels[slot], outlet_labels[slot], MAX_OUTLET_LABEL_LEN) != 0) {
+            label_changed = true;
+        }
+    }
+
+    if (changed_outlet_mask) *changed_outlet_mask = changed;
+    if (labels_changed) *labels_changed = label_changed;
+    cJSON_Delete(root);
+    return true;
+}
+
+static void handle_outlets_config(const char *data, int len)
+{
+    char relay_names[NUM_RELAY_SLOTS][MAX_RELAY_NAME_LEN + 1] = {{0}};
+    char outlet_labels[NUM_RELAY_SLOTS][MAX_OUTLET_LABEL_LEN + 1] = {{0}};
+    uint8_t changed_outlet_mask = 0;
+    bool labels_changed = false;
+
+    if (!parse_outlets_config(data, len, relay_names, outlet_labels,
+                              &changed_outlet_mask, &labels_changed)) {
+        return;
+    }
+
+    if (!config_save_outlet_config(relay_names, outlet_labels)) {
+        publish_outlets_error("write_failed", 0, NULL);
+        return;
+    }
+
+    if (changed_outlet_mask) {
+        config_save_schedule_disabled_mask(
+            config_get()->schedule_disabled_mask & ~changed_outlet_mask);
+        if (schedule_remove_entries_for_outlets(changed_outlet_mask) &&
+            relays_get_mode() == RELAY_MODE_AUTO) {
+            schedule_evaluate_now();
+        }
+        mqtt_publish_schedule_state("mqtt");
+    }
+
+    mqtt_publish_outlets_state("mqtt");
+    ESP_LOGI(TAG, "Outlet assignments%s updated from MQTT",
+             labels_changed ? "/labels" : "");
+}
+
 static void handle_control_mode(const char *data, int len)
 {
     // "2" = manual, "3" = auto, "7" = all off
@@ -426,6 +682,60 @@ static void handle_config(const char *data, int len)
     cJSON_Delete(root);
 }
 
+static void handle_time_action(const char *data, int len)
+{
+    cJSON *root = cJSON_ParseWithLength(data, len);
+    if (!root || !cJSON_IsObject(root)) {
+        cJSON_Delete(root);
+        publish_time_error("invalid_payload");
+        return;
+    }
+
+    cJSON *vfield = cJSON_GetObjectItem(root, "v");
+    if (!json_number_is_int(vfield)) {
+        cJSON_Delete(root);
+        publish_time_error("invalid_payload");
+        return;
+    }
+    if (vfield->valueint != 1) {
+        cJSON_Delete(root);
+        publish_time_error("unsupported_time_action_version");
+        return;
+    }
+
+    cJSON *action = cJSON_GetObjectItem(root, "action");
+    if (!action || !cJSON_IsString(action)) {
+        cJSON_Delete(root);
+        publish_time_error("invalid_payload");
+        return;
+    }
+    if (strcmp(action->valuestring, "sync_epoch") != 0) {
+        cJSON_Delete(root);
+        publish_time_error("unsupported_action");
+        return;
+    }
+
+    cJSON *epoch_item = cJSON_GetObjectItem(root, "epoch");
+    if (!json_number_is_int(epoch_item)) {
+        cJSON_Delete(root);
+        publish_time_error("invalid_epoch");
+        return;
+    }
+
+    time_t epoch = (time_t)epoch_item->valueint;
+    cJSON_Delete(root);
+
+    if (!time_sync_set_epoch(epoch, "mqtt")) {
+        publish_time_error("invalid_epoch");
+        return;
+    }
+
+    if (relays_get_mode() == RELAY_MODE_AUTO) {
+        schedule_evaluate_now();
+    }
+    mqtt_publish_schedule_state("time");
+}
+
 static void handle_ota(const char *data, int len)
 {
     // OTA URL received — start firmware update
@@ -512,6 +822,7 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base,
         // Publish online status (retained)
         esp_mqtt_client_publish(s_client, s_topic_status, "online", 0, 1, 1);
         subscribe_all();
+        mqtt_publish_outlets_state("reconnect");
         mqtt_publish_schedule_state("reconnect");
         break;
 
@@ -532,6 +843,10 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base,
             handle_control_relay(event->data, event->data_len);
         } else if (strcmp(topic, s_topic_config) == 0) {
             handle_config(event->data, event->data_len);
+        } else if (strcmp(topic, s_topic_outlets_config) == 0) {
+            handle_outlets_config(event->data, event->data_len);
+        } else if (strcmp(topic, s_topic_time_action) == 0) {
+            handle_time_action(event->data, event->data_len);
         } else if (strcmp(topic, s_topic_grow) == 0) {
             ESP_LOGI(TAG, "Schedule received from Command Center (%d bytes)", event->data_len);
             if (!schedule_load(event->data, event->data_len)) {
@@ -610,6 +925,45 @@ void mqtt_publish_sensor(const char *json_payload)
 {
     if (!s_connected || !s_client) return;
     esp_mqtt_client_publish(s_client, s_topic_sensor, json_payload, 0, 0, 0);
+}
+
+void mqtt_publish_outlets_state(const char *source)
+{
+    if (!s_connected || !s_client) return;
+
+    cJSON *root = cJSON_CreateObject();
+    if (!root) return;
+    cJSON_AddNumberToObject(root, "v", 1);
+    cJSON_AddStringToObject(root, "source",
+                            (source && source[0]) ? source : "firmware");
+
+    cJSON *outlets = cJSON_CreateArray();
+    if (!outlets) {
+        cJSON_Delete(root);
+        return;
+    }
+    cJSON_AddItemToObject(root, "outlets", outlets);
+
+    for (int id = 1; id <= 4; id++) {
+        cJSON *item = cJSON_CreateObject();
+        if (!item) continue;
+        char label[MAX_OUTLET_LABEL_LEN + 16];
+        label_for_outlet(id, label, sizeof(label));
+        cJSON_AddNumberToObject(item, "id", id);
+        cJSON_AddStringToObject(item, "assignment", assignment_for_outlet(id));
+        cJSON_AddStringToObject(item, "label", label);
+        cJSON_AddItemToArray(outlets, item);
+    }
+
+    char *payload = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!payload) {
+        ESP_LOGW(TAG, "Outlet state publish skipped: out of memory");
+        return;
+    }
+
+    esp_mqtt_client_publish(s_client, s_topic_outlets_state, payload, 0, 1, 1);
+    free(payload);
 }
 
 void mqtt_publish_schedule_state(const char *source)
@@ -747,6 +1101,12 @@ void mqtt_publish_schedule_state(const char *source)
 bool mqtt_is_connected(void)
 {
     return s_connected;
+}
+
+bool mqtt_is_enabled(void)
+{
+    const growhub_config_t *cfg = config_get();
+    return cfg->mqtt_host[0] != '\0' && !cfg->mqtt_disabled;
 }
 
 void mqtt_stop(void)

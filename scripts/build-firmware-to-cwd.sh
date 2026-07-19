@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build Growhub CE firmware and copy firmware.bin to the directory where this
-# script was invoked from.
+# script was invoked from. The script may be run from the repository or copied
+# into the destination directory.
 
 set -euo pipefail
 
@@ -32,17 +33,23 @@ find_repo_dir() {
   fi
 
   for candidate in \
+    "$START_DIR" \
+    "$START_DIR/.." \
     "$SCRIPT_DIR" \
     "$SCRIPT_DIR/.." \
     "$SCRIPT_DIR/Growhub-CE-Firmware" \
-    "$SCRIPT_DIR/../Growhub-CE-Firmware"; do
+    "$SCRIPT_DIR/../Growhub-CE-Firmware" \
+    "${HOME:-}/projects/Growhub-CE-Firmware" \
+    "${HOME:-}/Projects/Growhub-CE-Firmware" \
+    "${HOME:-}/src/Growhub-CE-Firmware" \
+    "${HOME:-}/Developer/Growhub-CE-Firmware"; do
     if [ -f "$candidate/firmware/platformio.ini" ]; then
       CDPATH='' cd -- "$candidate" && pwd
       return
     fi
   done
 
-  die "Could not find Growhub-CE-Firmware near $SCRIPT_DIR"
+  die "Could not find Growhub-CE-Firmware. Set GROWHUB_REPO_DIR to the repository path and try again."
 }
 
 sha256_file() {

@@ -1,6 +1,7 @@
 # Growhub CE Firmware
 
-Community Edition firmware for the NIWA Growhub ESP32 grow controller.
+Community Edition firmware for NIWA Growhub and Growhub+ ESP32 grow
+controllers.
 
 Growhub CE keeps Growhub hardware usable after Niwa's cloud shutdown. Once installed, the controller runs locally over WiFi with a built-in web UI. MQTT is optional.
 
@@ -30,8 +31,11 @@ Important: do not connect the adapter's `3.3V` or `VCC` pin to the Growhub. Powe
 
 Verified on bench:
 
-- 2 physical NIWA Growhub units
-- sensor board variant `SH_NP01_S_134368b_V1.1` + `SA-24-B 01.01.0644`
+- 3 physical controllers: 2 Growhub+ units and 1 original Growhub
+- relay, sensor, front-button, operation-LED, malfunction-LED, WiFi, and OTA
+  behavior on both product variants
+- sensor board marking `SH_NP01_S_134368b_V1.1` +
+  `SA-24-B 01.01.0644` on the two Growhub+ units
 
 Current CE firmware supports:
 
@@ -40,6 +44,9 @@ Current CE firmware supports:
 - local schedules and manual outlet control
 - CE-to-CE OTA updates
 - optional MQTT integration
+
+The frozen next-release firmware and initial Command Center compatibility
+baseline is `1.1.0C`.
 
 Known limitations:
 
@@ -65,17 +72,19 @@ http://192.168.4.1
 
 From the web UI you can save WiFi credentials, name the device, configure outlets, create schedules, and later update firmware.
 
-## Status LED
+## Status LEDs
 
-The front status LED shows the highest-priority active state:
+The blue/green operation LED reports connectivity; the red malfunction LED
+reports a blocking automation warning:
 
-| Pattern | Meaning |
-|---|---|
-| 3 fast pulses + pause | WiFi Recovery Mode: periodically scanning for configured WiFi |
-| 2 fast pulses + pause | A schedule needs valid time, but time is not set yet |
-| Fast blink | AP-only mode, no WiFi credentials, or manually disconnected |
-| Slow blink | WiFi connected, MQTT disconnected or disabled |
-| Solid ON | WiFi connected and MQTT connected |
+| LED | Pattern | Meaning |
+|---|---|---|
+| Operation | 3 fast pulses + pause | Setup AP available through automatic fallback or the physical-button override |
+| Operation | Fast blink | WiFi disconnected; waiting for the setup AP fallback timeout |
+| Operation | Slow blink | WiFi connected; configured/enabled MQTT broker is disconnected |
+| Operation | Solid ON | WiFi connected; MQTT is connected or intentionally not enabled |
+| Red malfunction | 2 fast pulses + pause | A schedule needs valid time, but time is not set yet |
+| Red malfunction | OFF | No blocking wall-time warning |
 
 The time-needed pattern appears only when an active AUTO schedule uses a wall-clock condition, such as a light/fan time window or pump allowed window. Sensor-based conditions and pump intervals without an allowed window can still run without valid time.
 Sensor-data warnings are shown in the web UI/status payloads, not as a separate LED pattern in v1.
@@ -100,6 +109,7 @@ See [docs/OTA.md](docs/OTA.md) for details.
 - [MQTT reference](docs/MQTT.md): topics and payloads
 - [Command Center integration](docs/COMMAND-CENTER.md): companion-app firmware contract
 - [Release process](docs/RELEASES.md): maintainer packaging and GitHub Releases
+- [v1.1.0C release notes](docs/RELEASE-NOTES-v1.1.0C.md): frozen next-release scope and compatibility notes
 - [Development guide](docs/DEVELOPMENT.md): building from source
 - [Security policy](SECURITY.md): trusted-LAN threat model
 - [Why UART is required](docs/adr/0003-uart-required-first-flash.md): stock-to-CE install rationale

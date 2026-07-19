@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <time.h>
 
 // Apply the configured timezone/time source/SNTP servers.
 void time_sync_init(void);
@@ -9,6 +10,10 @@ void time_sync_on_wifi_connected(void);
 
 // Wall time is considered usable once the epoch is beyond the ESP32 reset era.
 bool time_sync_wall_time_valid(void);
+
+// Set wall time from a caller-provided epoch without changing configured
+// time source. Returns false if the epoch is outside the accepted range.
+bool time_sync_set_epoch(time_t epoch, const char *source);
 
 // Public status strings used by /status and MQTT schedule/state.
 const char *time_sync_source_str(void);

@@ -9,7 +9,10 @@
 
 Growhub CE scheduling was originally represented as one mode per outlet, such as `timer`, `rh`, `temp`, or `interval`. That shape cannot express common grow-control behavior like a fan that should turn on for a time window, high temperature, or high humidity, while also explaining which condition is currently controlling the outlet.
 
-The project is still pre-public-release, so schedule compatibility with the existing v2 payload is not required.
+At the time of this decision, the project had not published a firmware release,
+so schedule compatibility with the existing bench-only v2 payload was not
+required. Public `v1.0.0C` subsequently shipped with schedule v3; no published
+v2 contract was removed.
 
 ## Decision
 
@@ -109,7 +112,10 @@ Rejected schedules leave the previous active schedule unchanged and publish a sc
 
 Empty schedules are not treated as a clear command. Clearing the schedule is an explicit action so malformed or accidental empty payloads cannot delete automation.
 
-Because CE is pre-public-release, firmware does not keep a compatibility path for v2 schedules. If a stored v2 schedule is found during boot, firmware rejects it, logs the validation reason, and clears it.
+Firmware does not keep a compatibility path for the bench-only v2 schedule
+format. If a stored v2 schedule is found during boot, firmware rejects it, logs
+the validation reason, and clears it. Public `v1.0.0C` and later releases use
+schedule v3.
 
 Environmental conditions fail inactive when the required sensor reading is invalid, unavailable, or stale. A temp/rH reading becomes stale after 120 seconds without a successful sensor poll; with the current 3-second UART poll interval, that allows about 40 missed polls before automation stops trusting the reading. Stale sensor data disables only the affected sensor condition; other valid active conditions can still authorize the outlet. For example, a fan inside an active time window remains ON when temp/rH data is stale, with a single-line status such as `ON - time active; sensor data unavailable`. When stale sensor data removes the last active condition authorizing an outlet, AUTO turns that outlet OFF at the next 30-second schedule evaluation and publishes schedule state. When a sensor-based condition is inactive because sensor data is unavailable or stale and no other condition authorizes the outlet, the single-line status should say `waiting for sensor data`. On schedule load, boot, or stale-sensor recovery, environmental conditions reset as inactive and evaluate from the recovered/current reading. If that reading is already beyond the condition's ON threshold, the condition may activate at the next schedule evaluation; if the reading is merely inside the configured band, it waits for a threshold crossing. Band-active state is not persisted.
 
@@ -153,7 +159,7 @@ Schedule error reasons are `invalid_payload`, `unsupported_schedule_version`, `e
 
 The ESP32 has no battery-backed wall clock. Wall-clock schedule conditions stay inactive until valid wall time exists, but sensor-based conditions and pure uptime-based intervals can continue.
 
-Valid wall time may come from SNTP or browser sync. Browser sync sets the current clock but does not change the configured time source.
+Valid wall time may come from SNTP, browser sync, or MQTT `time/action`. Browser sync and MQTT `time/action` set the current clock but do not change the configured time source.
 
 Firmware exposes time health separately from schedule state:
 
@@ -171,23 +177,23 @@ SNTP mode has two configurable servers. Defaults are:
 - `pool.ntp.org`
 - `time.nist.gov`
 
-The local web UI and MQTT config can update the SNTP server hostnames. Firmware starts SNTP during boot/config apply and restarts SNTP whenever the WiFi station receives an IP address, so reboot, OTA update, and WiFi recovery all trigger a fresh sync attempt as soon as the network is available. If SNTP is selected but the clock was set from browser sync and SNTP has not synced, the UI warns that time is currently valid but may drift after long runs or power loss. Firmware also tracks the last successful SNTP sync and treats SNTP as unhealthy if that sync becomes stale after three SNTP poll intervals, which is about three hours with the current one-hour poll interval. To avoid false warnings immediately after a reboot, OTA update, WiFi recovery, or SNTP config change, firmware suppresses the drift-only `time_sntp_unhealthy` warning for the first hour after SNTP starts or restarts. Blocking `time_sync_required` still appears immediately when an active AUTO wall-clock schedule has no valid wall time.
+The local web UI and MQTT config can update the SNTP server hostnames. Firmware starts SNTP during boot/config apply and restarts SNTP whenever the WiFi station receives an IP address, so reboot, OTA update, and WiFi recovery all trigger a fresh sync attempt as soon as the network is available. If SNTP is selected but the clock was set from browser sync or MQTT `time/action` and SNTP has not synced, the UI warns that time is currently valid but may drift after long runs or power loss. Firmware also tracks the last successful SNTP sync and treats SNTP as unhealthy if that sync becomes stale after three SNTP poll intervals, which is about three hours with the current one-hour poll interval. To avoid false warnings immediately after a reboot, OTA update, WiFi recovery, or SNTP config change, firmware suppresses the drift-only `time_sntp_unhealthy` warning for the first hour after SNTP starts or restarts. Blocking `time_sync_required` still appears immediately when an active AUTO wall-clock schedule has no valid wall time.
 
-The status LED uses a distinct time-needed pattern only when an active AUTO schedule contains a wall-clock condition and wall time is invalid. SNTP pending after browser sync is a UI/status warning, not an LED time-needed state. Sensor-data warnings do not add a new LED pattern in v1; they are surfaced through UI/status warnings and outlet summaries.
+The red malfunction LED uses a distinct time-needed pattern only when an active AUTO schedule contains a wall-clock condition and wall time is invalid. The blue/green operation LED independently reports setup-AP and connectivity state. SNTP pending after browser sync or MQTT `time/action` is a UI/status warning, not an LED time-needed state. Sensor-data warnings do not add a new LED pattern in v1; they are surfaced through UI/status warnings and outlet summaries.
 
 ## Rationale
 
 The one-mode v2 model made simple schedules easy but could not represent real fan control or clear user-facing explanations. A condition-list model maps directly to the grow-control questions users ask: which condition is active, what will clear it, and what is the outlet waiting for?
 
-Explicit bands are more understandable than hidden hysteresis and make status text precise. Keeping outlet assignment outside the schedule avoids conflicts when users change what is plugged into an outlet. Keeping v3 free of v2 compatibility branches is acceptable before public release and keeps the firmware parser simpler.
+Explicit bands are more understandable than hidden hysteresis and make status text precise. Keeping outlet assignment outside the schedule avoids conflicts when users change what is plugged into an outlet. Keeping v3 free of bench-only v2 compatibility branches was acceptable before the first public release and keeps the firmware parser simpler.
 
-Time health is separated from valid wall time because browser sync can make schedules runnable while SNTP remains unhealthy. That distinction matters for multi-device setups where Command Center may need several Growhubs to stay aligned.
+Time health is separated from valid wall time because browser sync or MQTT `time/action` can make schedules runnable while SNTP remains unhealthy. That distinction matters for multi-device setups where Command Center may need several Growhubs to stay aligned.
 
 ## Implementation sequence
 
 Implement this as staged milestones rather than one large scheduling rewrite:
 
-1. **V3 model, parser, persistence, and validation** — define the v3 in-memory model, parse/persist `v:3` schedules, reject invalid payloads with fixed `schedule/error.reason` values, clear pre-public v2 saved schedules without compatibility branches, and keep previous active schedules unchanged on rejected writes.
+1. **V3 model, parser, persistence, and validation** — define the v3 in-memory model, parse/persist `v:3` schedules, reject invalid payloads with fixed `schedule/error.reason` values, clear bench-only v2 saved schedules without compatibility branches, and keep previous active schedules unchanged on rejected writes.
 2. **State and error publishing contract** — publish retained `schedule/state` with mode, source, schedule mirror, outlet statuses, time health, warning strings, and machine-readable `warnings`; publish `control/error` and `schedule/error` for rejected commands/actions.
 3. **Evaluation engine** — evaluate `always_on`, wall-clock windows, environmental bands, fan multi-condition OR-on/all-clear-off behavior, pump intervals, per-outlet pump `Run Now`, stale sensor handling, wall-time blocking, mode transitions, assignment-change clearing, and all-off/manual semantics.
 4. **Local web UI** — replace the one-mode schedule form with assignment-specific condition controls, hide unsupported controls, show newly assigned outlets with no selected conditions, expose Disable/Enable only for saved outlet rules, use user-facing `Time control`, `Humidity control`, `Temperature control`, and `Watering control` labels with condition details hidden until enabled, show single-line outlet summaries, surface time/sensor warnings, expose browser sync/SNTP settings, and wire pump `Run Now`.

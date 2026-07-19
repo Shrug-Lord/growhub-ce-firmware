@@ -6,15 +6,30 @@ For public first-flash instructions, see [INSTALL.md](./INSTALL.md). For first-f
 
 ## Verified baseline
 
-- Controller class: NIWA Growhub built around an ESP32-D0WDQ6 rev 1.1 / ESP32-WROOM-32 class module
+- Controller class: NIWA Growhub / Growhub+ built around ESP32-D0WDQ6 rev 1.0 or 1.1 / ESP32-WROOM-32 class modules
 - Build assumptions: PlatformIO `esp32dev`, 4 MB flash, DIO mode
-- Bench hardware: 2 physical NIWA Growhub units
-- Verified sensor board variant on both units:
+- Bench hardware: 3 physical units (2 Growhub+, 1 original Growhub)
+- Recorded sensor board variant on both Growhub+ units:
   - Top board: `SH_NP01_S_134368b_V1.1`
   - Bottom board: `SA-24-B 01.01.0644`
-- CO2 hardware: not present on the two verified units
-  - Current firmware behavior on these units is `co2=0`, `co2_valid=false`
+- The original Growhub returns valid readings through the same CE UART protocol;
+  its sensor-board marking has not been recorded
+- CO2 hardware: not available on the three verified units
+  - Current firmware behavior is `co2=0`, `co2_valid=false`
 - Do not hardcode or document any specific MAC address, hostname suffix, or LAN IP as if it were universal
+
+## Product variants and electrical limits
+
+The combined NIWA manual distinguishes the original Growhub from Growhub+.
+These enclosure ratings, not the printed component rating on an individual
+relay, are the limits users should follow.
+
+| Variant | Operation LED | Outlet limit | Total limit | Other distinction |
+|---|---|---|---|---|
+| Growhub (original) | Blue | 10 A per outlet | 15 A total | No external circuit-breaker reset |
+| Growhub+ | Green | Follow product label/manual | 15 A total | External circuit-breaker reset |
+
+Source: [NIWA Grow Hub / Grow Hub+ manual](https://globalgarden.co/wp-content/uploads/2023/04/Niwa-Grow-Hub-Manual_Public.pdf).
 
 ## GPIO pinout
 
@@ -28,8 +43,10 @@ The firmware loads pin assignments from NVS, but these are the confirmed default
 | 27 | Relay output for Outlet 4 | Relay bit 2 |
 | 17 | Sensor UART TX | SH_NP01 UART, driven high very early in boot |
 | 16 | Sensor UART RX | SH_NP01 UART, driven high very early in boot |
-| 0 | Front-panel button | Active-low with pull-up; also the ESP32 boot-strap pin |
-| 2 | Status LED | Used for AP/WiFi/MQTT/recovery/time-needed indication |
+| 0 | ROM-download Boot pad | Active-low boot strap exposed on the UART header; not the front button |
+| 4 | Front-panel setup button | Active-low with pull-up; verified on Growhub and Growhub+ bench units |
+| 12 | Blue/green operation LED | Active-low; blue on Growhub, green on Growhub+ |
+| 14 | Red malfunction LED | Active-low; actionable warning indication |
 
 Notes:
 
@@ -56,18 +73,95 @@ That is why the first visible outlet in the enclosure is not the first bit in th
 
 ## Status LED patterns
 
-The status LED reports the highest-priority active state.
+The two active-low front LEDs report operation and malfunction independently.
 
-| Priority | Pattern | Meaning |
+| LED | Pattern | Meaning |
 |---|---|---|
-| 1 | 3 fast pulses + 1.8 s pause | WiFi Recovery Mode: scanning periodically for configured WiFi |
-| 2 | 2 fast pulses + 1.8 s pause | Valid wall time is required by the active AUTO schedule but has not been set |
-| 3 | Fast blink, 200 ms on / 200 ms off | AP-only mode, no WiFi credentials, or manually disconnected |
-| 4 | Slow blink, 1 s on / 1 s off | WiFi connected, MQTT disconnected or disabled |
-| 5 | Solid ON | WiFi connected and MQTT connected |
+| Blue/green operation | 3 fast pulses + 1.8 s pause | Setup AP active through automatic fallback or the physical-button override |
+| Blue/green operation | Fast blink, 200 ms on / 200 ms off | WiFi disconnected and the setup AP fallback timeout is still running |
+| Blue/green operation | Slow blink, 1 s on / 1 s off | WiFi connected; configured/enabled MQTT broker is disconnected |
+| Blue/green operation | Solid ON | WiFi connected; MQTT is connected or intentionally not enabled |
+| Red malfunction | 2 fast pulses + 1.8 s pause | Valid wall time is required by the active AUTO schedule but has not been set |
+| Red malfunction | OFF | No blocking wall-time warning |
 
 The time-needed pattern applies only when an active AUTO schedule contains a wall-clock condition, such as a light/fan time window or pump allowed window. Sensor-based conditions and pump intervals without an allowed window can continue without valid wall time.
 Sensor-data warnings are shown in the web UI/status payloads, not as a separate LED pattern in v1.
+
+The operation LED is enabled by default. For a suspected GPIO or LED-circuit
+fault that could interfere with normal device startup or operation, it can be
+disabled per device under **Actions → Hardware override** in the local web
+UI. When disabled, GPIO 12 is left as a floating input and is not driven; the
+red malfunction LED on GPIO 14 remains active. Saving this advanced setting
+reboots the controller.
+
+Growhub v1 bench discovery confirmed GPIO 12 and GPIO 14 are active-low. The
+Growhub+ uses the same operation/malfunction LED roles; its operation LED is
+green rather than blue.
+
+## Planned device diagnostics (`v1.2.0C`)
+
+The planned local diagnostics surface reports device, connectivity, time,
+sensor, and memory health without extending the MQTT contract. Runtime event
+counters are volatile, reset on every boot, and are labeled **since boot**.
+They are not written to NVS. Uptime and the current boot's reset reason provide
+the context needed to interpret those counters.
+
+The planned page has independent **System**, **Connectivity**, **Time**,
+**Sensor**, and **Hardware** sections. Each section may report Healthy,
+Attention, or Unavailable and list every applicable issue; there is no combined
+device score.
+Existing firmware rules determine connectivity, time, sensor-staleness, and OTA
+states. Panic, watchdog, and brownout reset reasons are called out as prior-boot
+events. Heap values are reported without an invented pass/fail threshold.
+
+The live values refresh every five seconds with a manual refresh fallback. A
+versioned, local-only `GET /diagnostics.json` response supplies the shareable
+data and doubles as the downloadable support export. Schema version `1` is
+additive: consumers must ignore unknown fields. Diagnostic read paths do not
+write configuration or alter control state.
+
+Firmware identity on that page includes the release version, build timestamp,
+running partition and OTA state, and the SHA-256 digest of the running
+application image. The live page may abbreviate the digest for readability;
+the sanitized JSON export contains all 64 hexadecimal characters so exact
+builds can be compared across devices. Firmware computes and caches that digest
+outside the HTTP request path so page refreshes do not repeatedly hash flash.
+This value is the ESP application image's embedded validation hash, which
+identifies the running image but is distinct from the release artifact's
+whole-file `sha256sum`. Release evidence must label and record both values
+rather than comparing unlike digests.
+
+The persistent operation-LED setting is presented separately as a hardware
+override rather than as a normal diagnostic control.
+
+The planned page provides separate momentary tests for the operation and red
+malfunction LEDs. A test drives only the selected LED solid ON for three
+seconds, runs asynchronously, permits only one LED test at a time, and then
+returns the pins to the normal status-pattern engine. The operation-LED test is
+unavailable while its hardware override is disabled. LED tests do not change
+relay state or pause schedule evaluation. Tests use an explicit local POST
+action; diagnostic GET requests are read-only. Relay self-tests are excluded
+because the existing manual controls already exercise outlets and may switch
+mains-connected loads.
+
+The planned downloadable diagnostics JSON is safe to share by default: it
+includes only the last four MAC characters and omits WiFi names and credentials,
+LAN and gateway addresses, and MQTT broker connection details and credentials.
+The live page may show full LAN details because it remains on the device's
+local web interface.
+
+Sensor health will report **since boot** counts for successful responses,
+short/missing responses, invalid headers, and checksum failures, plus the most
+recent result and its age. A short response includes its received-byte count.
+Raw UART response bytes remain available only in serial logs and are not shown
+on the page or included in the JSON export.
+
+Connectivity health will report **since boot** WiFi connection and
+disconnection events, automatic fallback and manual recovery activations, MQTT
+connection, disconnection, and error events, the current retry phase, and the
+most recent WiFi and MQTT failure ages. The live page translates the most recent
+failures into plain-language explanations. The JSON export also preserves the
+raw ESP-IDF reason and error codes for support analysis.
 
 ## Sensor interface
 
@@ -150,7 +244,7 @@ Entering ROM download mode for `esptool`:
 3. Start the flash command
 4. Release the bridge after flashing begins, or leave it held for the full operation
 
-Because GPIO 0 is also the firmware button input, anything that holds that line low during reset will affect boot mode.
+Holding the UART header's GPIO 0 Boot pad low during reset enters ROM download mode. The front-panel setup button is a separate GPIO 4 input.
 
 ## Flash layout and partition table
 
@@ -173,5 +267,8 @@ Implications:
 
 ## Hardware assumptions and caveats
 
-- The verified mapping above is specific to the two development units. Treat other NIWA revisions as unverified until checked on real hardware.
-- Current firmware keeps the AP and web UI available even when STA mode is configured; that is a product behavior choice, not a separate hardware capability.
+- The verified mapping above is specific to the three development units. Treat other NIWA revisions as unverified until checked on real hardware.
+- The web UI is served on every active WiFi interface. Depending on the saved
+  setup-AP preference, a configured device may run STA-only while connected;
+  the setup AP returns after five continuous minutes without a station IP or
+  immediately through the session button override.

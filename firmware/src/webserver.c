@@ -19,7 +19,6 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <time.h>
-#include <sys/time.h>
 
 static const char *TAG = "web";
 
@@ -292,6 +291,18 @@ static esp_err_t read_save_params(httpd_req_t *req, char *buf, size_t len)
     return ESP_OK;
 }
 
+static bool flush_page_chunk(httpd_req_t *req, char *buf, int *used)
+{
+    if (!req || !buf || !used || *used < 0 || *used >= BUF_SIZE) {
+        ESP_LOGE(TAG, "Web page chunk overflow (%d bytes)", used ? *used : -1);
+        return false;
+    }
+    if (*used == 0) return true;
+    if (httpd_resp_send_chunk(req, buf, *used) != ESP_OK) return false;
+    *used = 0;
+    return true;
+}
+
 static void fmt_uptime(char *buf, size_t len)
 {
     int64_t s = (int64_t)(esp_timer_get_time() / 1000000ULL);
@@ -316,6 +327,34 @@ static void fmt_time_12h(char *buf, size_t len, int time_src)
     snprintf(buf, len, "%d:%02d:%02d %s (%s)", h12, tm_info.tm_min, tm_info.tm_sec, ampm, src);
 }
 
+static void html_escape(const char *in, char *out, size_t len)
+{
+    if (!out || len == 0) return;
+
+    const char *src = in ? in : "";
+    size_t n = 0;
+    while (*src && n + 1 < len) {
+        const char *entity = NULL;
+        switch (*src) {
+        case '&': entity = "&amp;"; break;
+        case '<': entity = "&lt;"; break;
+        case '>': entity = "&gt;"; break;
+        case '"': entity = "&quot;"; break;
+        case '\'': entity = "&#39;"; break;
+        default:
+            out[n++] = *src++;
+            continue;
+        }
+
+        size_t elen = strlen(entity);
+        if (n + elen >= len) break;
+        memcpy(out + n, entity, elen);
+        n += elen;
+        src++;
+    }
+    out[n] = '\0';
+}
+
 // Write a device-type <select> dropdown for a given outlet slot
 static int write_outlet_select(char *buf, size_t len, int outlet_num, const char *current_name)
 {
@@ -335,10 +374,21 @@ static int write_outlet_select(char *buf, size_t len, int outlet_num, const char
     return n;
 }
 
-// Outlet display name: "Outlet N (Type)" or "Outlet N"
-static void outlet_display_name(int outlet_num, const char *relay_name, char *out, size_t len)
+// Outlet display name for HTML: "Label (Type)", "Outlet N (Type)", or "Outlet N".
+static void outlet_display_name(int outlet_num,
+                                const char *relay_name,
+                                const char *outlet_label,
+                                char *out,
+                                size_t len)
 {
-    if (relay_name && relay_name[0]) {
+    char safe_label[(MAX_OUTLET_LABEL_LEN * 6) + 1];
+    html_escape(outlet_label, safe_label, sizeof(safe_label));
+
+    if (safe_label[0] && relay_name && relay_name[0]) {
+        snprintf(out, len, "%s (%s)", safe_label, relay_name);
+    } else if (safe_label[0]) {
+        snprintf(out, len, "%s", safe_label);
+    } else if (relay_name && relay_name[0]) {
         snprintf(out, len, "Outlet %d (%s)", outlet_num, relay_name);
     } else {
         snprintf(out, len, "Outlet %d", outlet_num);
@@ -363,147 +413,6 @@ static float ui_temp_from_c(float temp_c, const growhub_config_t *cfg)
 static float ui_temp_to_c(float temp_ui, const growhub_config_t *cfg)
 {
     return cfg->temp_unit == 1 ? ((temp_ui - 32.0f) * 5.0f / 9.0f) : temp_ui;
-}
-
-static bool add_condition_json(cJSON *arr, const sched_condition_t *cond)
-{
-    cJSON *item = cJSON_CreateObject();
-    if (!item) return false;
-
-    switch (cond->type) {
-    case SCHED_COND_ALWAYS_ON:
-        cJSON_AddStringToObject(item, "type", "always_on");
-        break;
-    case SCHED_COND_TIME_WINDOW:
-        cJSON_AddStringToObject(item, "type", "time_window");
-        cJSON_AddStringToObject(item, "start", cond->start);
-        cJSON_AddStringToObject(item, "end", cond->end);
-        break;
-    case SCHED_COND_RH_LOW_BAND:
-        cJSON_AddStringToObject(item, "type", "rh_low_band");
-        cJSON_AddNumberToObject(item, "low", cond->low);
-        cJSON_AddNumberToObject(item, "high", cond->high);
-        break;
-    case SCHED_COND_RH_HIGH_BAND:
-        cJSON_AddStringToObject(item, "type", "rh_high_band");
-        cJSON_AddNumberToObject(item, "low", cond->low);
-        cJSON_AddNumberToObject(item, "high", cond->high);
-        break;
-    case SCHED_COND_TEMP_LOW_BAND_C:
-        cJSON_AddStringToObject(item, "type", "temp_low_band_c");
-        cJSON_AddNumberToObject(item, "low_c", cond->low);
-        cJSON_AddNumberToObject(item, "high_c", cond->high);
-        break;
-    case SCHED_COND_TEMP_HIGH_BAND_C:
-        cJSON_AddStringToObject(item, "type", "temp_high_band_c");
-        cJSON_AddNumberToObject(item, "low_c", cond->low);
-        cJSON_AddNumberToObject(item, "high_c", cond->high);
-        break;
-    case SCHED_COND_INTERVAL:
-        cJSON_AddStringToObject(item, "type", "interval");
-        cJSON_AddNumberToObject(item, "run_mins", cond->run_mins);
-        cJSON_AddNumberToObject(item, "every_hrs", cond->every_hrs);
-        if (cond->has_window) {
-            cJSON *window = cJSON_CreateObject();
-            if (!window) {
-                cJSON_Delete(item);
-                return false;
-            }
-            cJSON_AddStringToObject(window, "start", cond->window_start);
-            cJSON_AddStringToObject(window, "end", cond->window_end);
-            cJSON_AddItemToObject(item, "window", window);
-        }
-        break;
-    default:
-        cJSON_Delete(item);
-        return false;
-    }
-
-    cJSON_AddItemToArray(arr, item);
-    return true;
-}
-
-static bool remove_schedule_entries_for_outlets(uint8_t outlet_mask)
-{
-    outlet_sched_t outlets[MAX_OUTLET_SCHEDS] = {0};
-    int count = schedule_get_outlets(outlets, MAX_OUTLET_SCHEDS);
-    if (count <= 0 || outlet_mask == 0) return false;
-
-    bool removed = false;
-    int kept = 0;
-    for (int i = 0; i < count; i++) {
-        if (outlets[i].id >= 1 && outlets[i].id <= 4 &&
-            (outlet_mask & (1 << (outlets[i].id - 1)))) {
-            removed = true;
-        } else {
-            kept++;
-        }
-    }
-    if (!removed) return false;
-
-    if (kept == 0) {
-        schedule_clear();
-        config_clear_schedule();
-        return true;
-    }
-
-    cJSON *root = cJSON_CreateObject();
-    cJSON *arr = cJSON_CreateArray();
-    if (!root || !arr) {
-        cJSON_Delete(root);
-        cJSON_Delete(arr);
-        schedule_clear();
-        config_clear_schedule();
-        return true;
-    }
-    cJSON_AddNumberToObject(root, "v", 3);
-    cJSON_AddItemToObject(root, "outlets", arr);
-
-    bool ok = true;
-    for (int i = 0; i < count && ok; i++) {
-        if (outlets[i].id >= 1 && outlets[i].id <= 4 &&
-            (outlet_mask & (1 << (outlets[i].id - 1)))) {
-            continue;
-        }
-
-        cJSON *item = cJSON_CreateObject();
-        cJSON *conditions = cJSON_CreateArray();
-        if (!item || !conditions) {
-            cJSON_Delete(item);
-            cJSON_Delete(conditions);
-            ok = false;
-            break;
-        }
-        cJSON_AddNumberToObject(item, "id", outlets[i].id);
-        cJSON_AddItemToObject(item, "conditions", conditions);
-
-        for (int j = 0; j < outlets[i].condition_count; j++) {
-            if (!add_condition_json(conditions, &outlets[i].conditions[j])) {
-                ok = false;
-                break;
-            }
-        }
-        cJSON_AddItemToArray(arr, item);
-    }
-
-    char *payload = ok ? cJSON_PrintUnformatted(root) : NULL;
-    cJSON_Delete(root);
-    if (!payload) {
-        schedule_clear();
-        config_clear_schedule();
-        return true;
-    }
-
-    if (schedule_load(payload, (int)strlen(payload))) {
-        config_save_schedule(payload);
-    } else {
-        ESP_LOGW(TAG, "Schedule rebuild after assignment change failed: %s (outlet %d)",
-                 schedule_last_error_reason(), schedule_last_error_outlet());
-        schedule_clear();
-        config_clear_schedule();
-    }
-    free(payload);
-    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -536,6 +445,10 @@ static esp_err_t root_handler(httpd_req_t *req)
     const char *name_o2 = cfg->relay_names[0];
     const char *name_o3 = cfg->relay_names[1];
     const char *name_o4 = cfg->relay_names[2];
+    const char *label_o1 = cfg->outlet_labels[3];
+    const char *label_o2 = cfg->outlet_labels[0];
+    const char *label_o3 = cfg->outlet_labels[1];
+    const char *label_o4 = cfg->outlet_labels[2];
 
     // Temperature display
     float temp_display = s.temp_valid ? s.temperature : 0.0f;
@@ -598,11 +511,11 @@ static esp_err_t root_handler(httpd_req_t *req)
         config_get_mac_str());
 
     // --- Status section ---
-    char o1_disp[32], o2_disp[32], o3_disp[32], o4_disp[32];
-    outlet_display_name(1, name_o1, o1_disp, sizeof(o1_disp));
-    outlet_display_name(2, name_o2, o2_disp, sizeof(o2_disp));
-    outlet_display_name(3, name_o3, o3_disp, sizeof(o3_disp));
-    outlet_display_name(4, name_o4, o4_disp, sizeof(o4_disp));
+    char o1_disp[240], o2_disp[240], o3_disp[240], o4_disp[240];
+    outlet_display_name(1, name_o1, label_o1, o1_disp, sizeof(o1_disp));
+    outlet_display_name(2, name_o2, label_o2, o2_disp, sizeof(o2_disp));
+    outlet_display_name(3, name_o3, label_o3, o3_disp, sizeof(o3_disp));
+    outlet_display_name(4, name_o4, label_o4, o4_disp, sizeof(o4_disp));
 
     // CC status: disabled > connected > offline
     const char *cc_class = cc_disabled ? "disabled-cc" : (mqtt_on ? "online" : "offline");
@@ -690,15 +603,16 @@ static esp_err_t root_handler(httpd_req_t *req)
             "</form><br>");
         // Per-outlet ON/OFF buttons
         // Outlet 1 = bit3, Outlet 2 = bit0, Outlet 3 = bit1, Outlet 4 = bit2
-        struct { int outlet_num; int bit; int on; const char *name; } outlets[4] = {
-            {1, 3, o1_on, name_o1},
-            {2, 0, o2_on, name_o2},
-            {3, 1, o3_on, name_o3},
-            {4, 2, o4_on, name_o4},
+        struct { int outlet_num; int bit; int on; const char *name; const char *label; } outlets[4] = {
+            {1, 3, o1_on, name_o1, label_o1},
+            {2, 0, o2_on, name_o2, label_o2},
+            {3, 1, o3_on, name_o3, label_o3},
+            {4, 2, o4_on, name_o4, label_o4},
         };
         for (int i = 0; i < 4; i++) {
-            char disp[32];
-            outlet_display_name(outlets[i].outlet_num, outlets[i].name, disp, sizeof(disp));
+            char disp[240];
+            outlet_display_name(outlets[i].outlet_num, outlets[i].name,
+                                outlets[i].label, disp, sizeof(disp));
             uint8_t mask_on  = relay_mask | (1 << outlets[i].bit);
             uint8_t mask_off = relay_mask & ~(1 << outlets[i].bit);
             n += snprintf(buf + n, BUF_SIZE - n,
@@ -715,6 +629,15 @@ static esp_err_t root_handler(httpd_req_t *req)
         }
     }
     n += snprintf(buf + n, BUF_SIZE - n, "</div>");
+
+    // Keep each independently rendered section group below BUF_SIZE. A full
+    // four-outlet schedule plus the later settings forms can exceed one
+    // response buffer even though each group is safely bounded on its own.
+    if (!flush_page_chunk(req, buf, &n)) {
+        free(buf);
+        httpd_resp_send_chunk(req, NULL, 0);
+        return ESP_FAIL;
+    }
 
     // --- Schedule section (V3 outlet-condition model) ---
     {
@@ -760,11 +683,15 @@ static esp_err_t root_handler(httpd_req_t *req)
             bool temp_checked = temp_low || temp_high;
             bool interval_checked = interval != NULL;
 
+            char sched_disp[240];
+            outlet_display_name(on, dev, cfg->outlet_labels[slot],
+                                sched_disp, sizeof(sched_disp));
+
             n += snprintf(buf + n, BUF_SIZE - n,
                 "<div id='s%d_card' class='sched-card%s'>"
-                "<div class='sched-head'><strong>Outlet %d (%s)</strong>",
+                "<div class='sched-head'><strong>%s</strong>",
                 on, disabled ? " disabled" : "",
-                on, dev);
+                sched_disp);
             if (has_saved_rules) {
                 n += snprintf(buf + n, BUF_SIZE - n,
                     "<button type='button' id='s%d_toggle' class='btn-sm' onclick='return schedToggle(%d)'>"
@@ -962,6 +889,12 @@ static esp_err_t root_handler(httpd_req_t *req)
             "</form></div>");
     }
 
+    if (!flush_page_chunk(req, buf, &n)) {
+        free(buf);
+        httpd_resp_send_chunk(req, NULL, 0);
+        return ESP_FAIL;
+    }
+
     // --- WiFi section ---
     n += snprintf(buf + n, BUF_SIZE - n,
         "<div class='section'><h2>WiFi</h2>"
@@ -986,7 +919,18 @@ static esp_err_t root_handler(httpd_req_t *req)
             "Forget WiFi</button>"
             "</form>");
     }
-    n += snprintf(buf + n, BUF_SIZE - n, "</div>");
+    n += snprintf(buf + n, BUF_SIZE - n,
+        "<form method='GET' action='/save' style='margin-top:12px'>"
+        "<label>Keep setup access point active while connected</label>"
+        "<label style='font-weight:normal'>"
+        "<input type='radio' name='keep_ap' value='1' %s> Yes</label>&nbsp;"
+        "<label style='font-weight:normal'>"
+        "<input type='radio' name='keep_ap' value='0' %s> No</label>"
+        "<p class='note'>When disabled, the setup AP returns after five minutes without WiFi.</p>"
+        "<input type='submit' value='Save AP Setting'>"
+        "</form></div>",
+        cfg->keep_ap_active ? "checked" : "",
+        cfg->keep_ap_active ? "" : "checked");
 
     // --- Command Center section ---
     n += snprintf(buf + n, BUF_SIZE - n,
@@ -1060,26 +1004,37 @@ static esp_err_t root_handler(httpd_req_t *req)
     }
     n += snprintf(buf + n, BUF_SIZE - n, "</div>");
 
+    if (!flush_page_chunk(req, buf, &n)) {
+        free(buf);
+        httpd_resp_send_chunk(req, NULL, 0);
+        return ESP_FAIL;
+    }
+
     // --- Power Outlets section ---
     n += snprintf(buf + n, BUF_SIZE - n,
         "<div class='section'><h2>Power Outlets</h2>"
-        "<p class='note'>Assign what's plugged into each outlet so the app can label them correctly.</p>");
+        "<p class='note'>Assignments drive schedules. Labels name the specific equipment.</p>");
     n += snprintf(buf + n, BUF_SIZE - n,
         "<form method='GET' action='/save'><table>");
     for (int on = 1; on <= 4; on++) {
         int slot = outlet_slot[on - 1];
+        char safe_label[(MAX_OUTLET_LABEL_LEN * 6) + 1];
+        html_escape(cfg->outlet_labels[slot], safe_label, sizeof(safe_label));
         n += snprintf(buf + n, BUF_SIZE - n, "<tr><td><label>Outlet %d</label></td><td>", on);
         n += write_outlet_select(buf + n, BUF_SIZE - n, on, cfg->relay_names[slot]);
-        n += snprintf(buf + n, BUF_SIZE - n, "</td></tr>");
+        n += snprintf(buf + n, BUF_SIZE - n,
+            "</td><td><input type='text' name='label_%d' maxlength='%d' "
+            "value='%s' placeholder='Outlet %d'></td></tr>",
+            on, MAX_OUTLET_LABEL_LEN, safe_label, on);
     }
     n += snprintf(buf + n, BUF_SIZE - n,
         "</table><input type='submit' value='Save'></form></div>");
 
-    // Flush accumulated body before tail sections so we don't truncate
-    // when total dynamic content (schedule, outlet names, etc.) grows past BUF_SIZE
-    if (n > BUF_SIZE) n = BUF_SIZE;
-    httpd_resp_send_chunk(req, buf, n);
-    n = 0;
+    if (!flush_page_chunk(req, buf, &n)) {
+        free(buf);
+        httpd_resp_send_chunk(req, NULL, 0);
+        return ESP_FAIL;
+    }
 
     // --- Firmware Update section ---
     n += snprintf(buf + n, BUF_SIZE - n,
@@ -1109,13 +1064,60 @@ static esp_err_t root_handler(httpd_req_t *req)
         "<input type='hidden' name='reset' value='1'>"
         "<button type='submit' class='btn-danger'"
         " onclick=\"return confirm('Erase ALL settings and reboot into setup mode?')\">Factory Reset</button>"
-        "</form></div>"
+        "</form> "
+        "<a class='btn-sm' href='/diagnostics'>Hardware override</a>"
+        "</div>"
         "</body></html>");
 
-    if (n > BUF_SIZE) n = BUF_SIZE;
-    httpd_resp_send_chunk(req, buf, n);
+    if (!flush_page_chunk(req, buf, &n)) {
+        free(buf);
+        httpd_resp_send_chunk(req, NULL, 0);
+        return ESP_FAIL;
+    }
     httpd_resp_send_chunk(req, NULL, 0); // end chunked response
     free(buf);
+    return ESP_OK;
+}
+
+// ---------------------------------------------------------------------------
+// GET /diagnostics -- hardware fault override
+// ---------------------------------------------------------------------------
+static esp_err_t diagnostics_handler(httpd_req_t *req)
+{
+    const growhub_config_t *cfg = config_get();
+    char body[2048];
+    int n = snprintf(body, sizeof(body),
+        "<p><a href='/'>&larr; Back to device</a></p>"
+        "<div class='section'><h2>Hardware override</h2>"
+        "<p class='note' style='color:#e67e22'>Use this only for a suspected GPIO "
+        "or LED-circuit fault that could interfere with normal device startup "
+        "or operation. Normal installations should keep the default enabled.</p>"
+        "<p>Operation LED pin: <strong>GPIO %u</strong><br>"
+        "Red malfunction LED pin: <strong>GPIO %u</strong></p>"
+        "<form method='GET' action='/save'>"
+        "<label>Blue/green operation LED output</label>"
+        "<label style='font-weight:normal'>"
+        "<input type='radio' name='operation_led' value='1' %s> Enabled (default)</label>&nbsp;"
+        "<label style='font-weight:normal'>"
+        "<input type='radio' name='operation_led' value='0' %s> Disabled / high-impedance</label>"
+        "<p class='note'>Disabled mode leaves GPIO 12 as a floating input and "
+        "never writes it. The red malfunction LED remains enabled.</p>"
+        "<input type='submit' value='Save and reboot' "
+        "onclick=\"return confirm('Change the operation LED hardware output and reboot?')\">"
+        "</form></div></body></html>",
+        cfg->pin_led,
+        cfg->pin_error_led,
+        cfg->operation_led_enabled ? "checked" : "",
+        cfg->operation_led_enabled ? "" : "checked");
+
+    if (n < 0 || (size_t)n >= sizeof(body)) {
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
+    httpd_resp_set_type(req, "text/html");
+    httpd_resp_send_chunk(req, PAGE_HEADER, HTTPD_RESP_USE_STRLEN);
+    httpd_resp_send_chunk(req, body, n);
+    httpd_resp_send_chunk(req, NULL, 0);
     return ESP_OK;
 }
 
@@ -1127,6 +1129,7 @@ static esp_err_t save_handler(httpd_req_t *req)
     char *query = calloc(1, SAVE_PARAM_MAX);
     char val[128] = {0};
     bool need_reboot = false;
+    bool ap_preference_disabled = false;
 
     if (!query) {
         httpd_resp_send_500(req);
@@ -1397,6 +1400,13 @@ static esp_err_t save_handler(httpd_req_t *req)
         wifi_reconnect();
     }
 
+    // --- Setup AP preference ---
+    if (get_param(query, "keep_ap", val, sizeof(val))) {
+        bool keep_active = atoi(val) != 0;
+        ap_preference_disabled = !keep_active && config_get()->keep_ap_active;
+        wifi_set_keep_ap_active(keep_active);
+    }
+
     // --- Command Center (MQTT) ---
     char host[MAX_HOSTNAME_LEN + 1] = {0}, port_str[6] = {0};
     if (get_param(query, "mqtt_host", host, sizeof(host)) && host[0]) {
@@ -1410,11 +1420,13 @@ static esp_err_t save_handler(httpd_req_t *req)
     // --- Device (name, timezone, temp_unit, time_src, SNTP servers) ---
     char name[MAX_DEVICE_NAME_LEN + 1] = {0}, tz[MAX_TIMEZONE_LEN + 1] = {0};
     char sntp_primary[MAX_SNTP_HOST_LEN + 1] = {0}, sntp_secondary[MAX_SNTP_HOST_LEN + 1] = {0};
-    char tu_str[4] = {0}, ts_str[4] = {0};
+    char tu_str[4] = {0}, ts_str[4] = {0}, operation_led_str[4] = {0};
     bool has_name = get_param(query, "dev_name",   name,   sizeof(name))   && name[0];
     bool has_tz   = get_param(query, "timezone",   tz,     sizeof(tz))     && tz[0];
     bool has_tu   = get_param(query, "temp_unit",  tu_str, sizeof(tu_str)) && tu_str[0];
     bool has_ts   = get_param(query, "time_src",   ts_str, sizeof(ts_str)) && ts_str[0];
+    bool has_operation_led = get_param(query, "operation_led", operation_led_str,
+                                       sizeof(operation_led_str)) && operation_led_str[0];
     bool has_sntp_primary = get_param(query, "sntp_primary", sntp_primary, sizeof(sntp_primary)) &&
                             sntp_primary[0];
     bool has_sntp_secondary = get_param(query, "sntp_secondary", sntp_secondary, sizeof(sntp_secondary)) &&
@@ -1431,6 +1443,13 @@ static esp_err_t save_handler(httpd_req_t *req)
         config_save_sntp_servers(has_sntp_primary ? sntp_primary : NULL,
                                  has_sntp_secondary ? sntp_secondary : NULL);
     }
+    if (has_operation_led) {
+        bool enabled = atoi(operation_led_str) != 0;
+        if (enabled != (config_get()->operation_led_enabled != 0)) {
+            config_save_operation_led_enabled(enabled);
+            need_reboot = true;
+        }
+    }
     if (time_changed) {
         time_sync_apply_config();
     }
@@ -1438,8 +1457,9 @@ static esp_err_t save_handler(httpd_req_t *req)
     // --- Outlet assignments ---
     // Display outlet N maps to relay_names[slot]: O1->slot3, O2->slot0, O3->slot1, O4->slot2
     int outlet_slot[4] = {3, 0, 1, 2};
-    bool any_outlet = false;
-    uint8_t changed_outlet_mask = 0;
+    bool any_outlet_config = false;
+    bool label_changed = false;
+    uint8_t changed_assignment_mask = 0;
     uint8_t disabled_mask = config_get()->schedule_disabled_mask;
     growhub_config_t pin_cfg = *config_get();
     for (int on = 1; on <= 4; on++) {
@@ -1448,24 +1468,44 @@ static esp_err_t save_handler(httpd_req_t *req)
         if (get_param(query, pname, val, sizeof(val))) {
             int slot = outlet_slot[on - 1];
             if (strncmp(pin_cfg.relay_names[slot], val, MAX_RELAY_NAME_LEN) != 0) {
-                changed_outlet_mask |= (1 << (on - 1));
+                changed_assignment_mask |= (1 << (on - 1));
                 disabled_mask &= ~(1 << (on - 1));
             }
             // Empty value means "None" — clear the name
             strncpy(pin_cfg.relay_names[slot], val, MAX_RELAY_NAME_LEN);
             pin_cfg.relay_names[slot][MAX_RELAY_NAME_LEN] = '\0';
-            any_outlet = true;
+            any_outlet_config = true;
+        }
+
+        snprintf(pname, sizeof(pname), "label_%d", on);
+        if (get_param(query, pname, val, sizeof(val))) {
+            int slot = outlet_slot[on - 1];
+            char normalized[MAX_OUTLET_LABEL_LEN + 1];
+            if (!config_normalize_outlet_label(val, normalized)) {
+                free(query);
+                httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid outlet label");
+                return ESP_FAIL;
+            }
+            if (strncmp(pin_cfg.outlet_labels[slot], normalized, MAX_OUTLET_LABEL_LEN) != 0) {
+                label_changed = true;
+            }
+            strncpy(pin_cfg.outlet_labels[slot], normalized, MAX_OUTLET_LABEL_LEN);
+            pin_cfg.outlet_labels[slot][MAX_OUTLET_LABEL_LEN] = '\0';
+            any_outlet_config = true;
         }
     }
-    if (any_outlet) {
+    if (any_outlet_config) {
         config_save_pins(&pin_cfg);
-        if (changed_outlet_mask) {
+        if (changed_assignment_mask) {
             config_save_schedule_disabled_mask(disabled_mask);
-            if (remove_schedule_entries_for_outlets(changed_outlet_mask) &&
+            if (schedule_remove_entries_for_outlets(changed_assignment_mask) &&
                 relays_get_mode() == RELAY_MODE_AUTO) {
                 schedule_evaluate_now();
             }
             mqtt_publish_schedule_state("local");
+        }
+        if (changed_assignment_mask || label_changed) {
+            mqtt_publish_outlets_state("local");
         }
     }
 
@@ -1597,7 +1637,27 @@ static esp_err_t save_handler(httpd_req_t *req)
         return ESP_OK;
     }
 
-    if (need_reboot) {
+    if (ap_preference_disabled && wifi_is_connected() && wifi_get_sta_ip()[0]) {
+        char page[1024];
+        const char *ip = wifi_get_sta_ip();
+        snprintf(page, sizeof(page),
+            "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+            "<title>Setup AP Disabled</title></head>"
+            "<body style='background:#1a1a2e;color:#e0e0e0;font-family:sans-serif;"
+            "text-align:center;padding:50px'>"
+            "<h1 style='color:#4ecca3'>Setup AP Disabled</h1>"
+            "<p>The setup network will turn off in two seconds.</p>"
+            "<p>Continue at <a style='color:#4ecca3' href='http://%s/'>http://%s/</a></p>"
+            "<p id='count'>Redirecting in 2...</p>"
+            "<script>var n=2;setInterval(function(){n--;"
+            "document.getElementById('count').textContent=n>0?'Redirecting in '+n+'...':'Redirecting...';"
+            "if(n<=0)location.href='http://%s/';},1000);</script>"
+            "</body></html>", ip, ip, ip);
+        httpd_resp_set_type(req, "text/html");
+        httpd_resp_sendstr(req, page);
+        free(query);
+    } else if (need_reboot) {
         httpd_resp_set_type(req, "text/html");
         httpd_resp_sendstr(req,
             "<html><body style='background:#1a1a2e;color:#e0e0e0;"
@@ -1705,10 +1765,7 @@ static esp_err_t savetime_handler(httpd_req_t *req)
     if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK &&
         get_param(query, "epoch", val, sizeof(val)) && val[0]) {
         time_t epoch = (time_t)atol(val);
-        if (epoch > 86400) {
-            struct timeval tv = { .tv_sec = epoch, .tv_usec = 0 };
-            settimeofday(&tv, NULL);
-            ESP_LOGI(TAG, "Time set from browser: %ld", (long)epoch);
+        if (time_sync_set_epoch(epoch, "browser")) {
             if (relays_get_mode() == RELAY_MODE_AUTO) {
                 schedule_evaluate_now();
             }
@@ -1868,6 +1925,10 @@ static esp_err_t status_handler(httpd_req_t *req)
     cJSON_AddBoolToObject(root, "wifi", wifi_connected);
     cJSON_AddBoolToObject(root, "mqtt", mqtt_is_connected());
     cJSON_AddBoolToObject(root, "recovery_mode", wifi_is_in_recovery_mode());
+    cJSON_AddBoolToObject(root, "keep_ap_active", cfg->keep_ap_active != 0);
+    cJSON_AddBoolToObject(root, "ap_active", wifi_is_ap_active());
+    cJSON_AddStringToObject(root, "ap_reason", wifi_ap_reason());
+    cJSON_AddNumberToObject(root, "ap_fallback_seconds", wifi_ap_fallback_seconds());
     cJSON_AddNumberToObject(root, "rssi", rssi_val);
     cJSON_AddNumberToObject(root, "uptime_s", (double)uptime_s);
     cJSON_AddNumberToObject(root, "temp", temp_display);
@@ -1961,7 +2022,7 @@ void webserver_init(void)
 {
     httpd_config_t http_cfg = HTTPD_DEFAULT_CONFIG();
     http_cfg.uri_match_fn = httpd_uri_match_wildcard;
-    http_cfg.max_uri_handlers = 8;
+    http_cfg.max_uri_handlers = 9;
     http_cfg.stack_size = 8192;
 
     httpd_handle_t server = NULL;
@@ -1977,6 +2038,7 @@ void webserver_init(void)
         {.uri="/save",       .method=HTTP_POST, .handler=save_handler},
         {.uri="/scan",       .method=HTTP_GET,  .handler=scan_handler},
         {.uri="/savetime",   .method=HTTP_GET,  .handler=savetime_handler},
+        {.uri="/diagnostics",.method=HTTP_GET,  .handler=diagnostics_handler},
         {.uri="/status",     .method=HTTP_GET,  .handler=status_handler},
         {.uri="/ota_status", .method=HTTP_GET,  .handler=ota_status_handler},
         {.uri="/ota_upload", .method=HTTP_POST, .handler=ota_upload_handler},

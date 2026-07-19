@@ -1,6 +1,7 @@
 # Install Growhub CE Firmware
 
-This guide is for installing CE firmware on a NIWA Growhub that is still running stock firmware.
+This guide is for installing CE firmware on an original NIWA Growhub or a
+Growhub+ that is still running stock firmware.
 
 First install requires opening the controller and flashing over UART. Later CE-to-CE updates can be done from the web UI.
 
@@ -55,12 +56,14 @@ Lift the cover carefully. Remove the plastic shield covering the components. The
 
 ## Wire The Adapter
 
-The Growhub UART pads are near the `MK1` label.
+The UART pads are near the ESP32 module. Growhub+ boards use one-letter labels;
+the original Growhub uses descriptive labels for the same electrical signals.
 
 Left to right:
 
 ```text
-G O V T R G
+Growhub+: G   O     V     T   R   G
+Growhub:  GND Boot  3.3V  TX  RX  GND
 ```
 
 Close-up of the UART pad row:
@@ -69,12 +72,12 @@ Close-up of the UART pad row:
 
 1. Wire the USB-to-TTL adapter like this:
 
-| Adapter pin | Growhub pad |
-|---|---|
-| TXD | R |
-| RXD | T |
-| GND | G |
-| 3.3V / VCC | leave disconnected |
+| Adapter pin | Growhub+ pad | Original Growhub pad |
+|---|---|---|
+| TXD | R | RX |
+| RXD | T | TX |
+| GND | G | GND |
+| 3.3V / VCC | leave disconnected | leave disconnected |
 
 Example USB-to-TTL adapter wiring. Your adapter may use different pin order or labels; use its silk-screen labels.
 
@@ -84,12 +87,12 @@ Example Growhub pad wiring:
 
 ![Jumper wires connected to the Growhub UART pads](install/niwa-uart-pins-wired.jpg)
 
-2. Bridge `O` to `G`.
+2. Bridge `O` to `G` on Growhub+, or `Boot` to `GND` on the original Growhub.
 3. Plug the UART USB into your computer
 4. Plug in/power on the Growhub while `O` and `G` are bridged.
 5. Do not remove the bridge wire or UART wires until the flashing is complete.
 
-Ready to flash, with UART connected and `O` bridged to `G`:
+Ready to flash, with UART connected and the Boot signal bridged to ground:
 
 ![Growhub UART wiring with O bridged to G for flashing](install/niwa-0g-bridged-ready-for-flash.jpg)
 
@@ -113,7 +116,7 @@ The script will:
 
 When the script says flashing is complete:
 
-1. Remove the `O` to `G` bridge and UART wires.
+1. Remove the `O`/`Boot` to ground bridge and UART wires.
 2. Power-cycle the Growhub normally.
 3. Wait for CE firmware to boot.
 
@@ -133,6 +136,14 @@ http://192.168.4.1
 
 Use the web UI to configure WiFi, device name, outlet labels, schedules, and optional MQTT.
 
+By default, the setup access point remains available after the Growhub joins
+your WiFi, preserving the behavior of earlier CE releases. You can disable that
+behavior under **WiFi > Keep setup access point active while connected**. When
+disabled, the setup AP turns off after a successful connection and returns
+after five continuous minutes without a WiFi address. A three-second button
+hold and release enables it immediately for the current boot session. Repeat
+the three-second hold to cancel the override; rebooting also clears it.
+
 ## Troubleshooting
 
 If the script cannot find the adapter, unplug and reconnect the USB-to-TTL adapter, then run the script again.
@@ -146,7 +157,7 @@ PORT=/dev/ttyUSB0 ./flash-growhub-ce.sh
 
 If the script keeps waiting for the bootloader:
 
-- confirm `O` is bridged to `G`
+- confirm `O` is bridged to `G`, or `Boot` is bridged to `GND`
 - power-cycle the Growhub while the bridge is held
 - close any serial monitor or other app using the USB serial port
 - confirm `TXD -> R`, `RXD -> T`, and `GND -> G`
