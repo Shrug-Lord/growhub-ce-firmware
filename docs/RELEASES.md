@@ -54,7 +54,9 @@ The verified build command:
 1. builds firmware with `firmware/.venv/bin/pio run`
 2. refreshes the release assets from that exact build output
 3. verifies the packaged `firmware.bin` matches the OTA `firmware.bin`
-4. verifies the first-flash ZIP integrity
+4. verifies every file named by the outer and bundled checksum manifests
+5. verifies the bundled merged image matches the release image
+6. verifies the first-flash ZIP integrity
 
 Build from an existing local PlatformIO build without rebuilding:
 
@@ -72,8 +74,9 @@ The packager:
 1. builds the firmware with PlatformIO unless `SKIP_BUILD=1`
 2. collects `firmware.bin`, `bootloader.bin`, `partitions.bin`, and `ota_data_initial.bin`
 3. creates `merged-firmware.bin`
-4. creates `SHA256SUMS`
-5. creates `growhub-ce-first-flash-<version>.zip`
+4. creates the outer `SHA256SUMS` for all release binaries
+5. creates a bundle-specific `SHA256SUMS` containing only files included in the ZIP
+6. creates `growhub-ce-first-flash-<version>.zip`
 
 ## GitHub Release Workflow
 

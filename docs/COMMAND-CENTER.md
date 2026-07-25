@@ -184,10 +184,10 @@ variant, but clients must not require it.
 }
 ```
 - Retained on `growhub/<MAC>/schedule/state`
-- Published on MQTT reconnect, accepted `grow` writes, local firmware schedule saves/clears, and mode changes
+- Published on MQTT reconnect, accepted `grow` writes, local firmware schedule saves/clears, mode changes, and automatic schedule-engine state changes
 - Published when `time_warning` or `sensor_warning` appears or clears, even if relay outputs do not change
 - `active=false` uses `"schedule": null`
-- `source` is informational: `local`, `mqtt`, `time`, or `reconnect`
+- `source` is informational: `local`, `mqtt`, `time`, `schedule`, or `reconnect`; `schedule` identifies an automatic schedule-engine update
 - `outlet_status` always includes all four outlets; summaries are empty in manual mode, for unassigned outlets, and for outlets with no active schedule entry
 - `outlet_status[].summary` is firmware-owned display text, not a structured reason API. CC should display it as text and use `warnings[].code` plus `warnings[].outlets` for stable warning logic.
 - Time health fields let CC warn when wall-clock schedules are paused or SNTP is unhealthy

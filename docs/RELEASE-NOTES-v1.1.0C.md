@@ -26,11 +26,14 @@ fully functional without Command Center or an MQTT broker.
 - MQTT commands and typed errors for outlet configuration and time sync
 - Retained schedule mirrors with time health, sensor health, warnings, and all
   four outlet status summaries
+- Documented `schedule` source for automatic schedule-engine mirror updates
 - Immediate schedule reevaluation after relevant time, mode, assignment, and
   configuration changes
 - CE-to-CE local firmware upload through the web UI in addition to URL OTA
 - Complete local web pages for fully configured four-outlet schedules, without
   response-buffer truncation in the Power Outlets section
+- Local schedule-editor support for the full documented pump range: intervals
+  from 1-168 hours and run durations from 1-240 minutes
 
 ## WiFi And Recovery
 
@@ -82,6 +85,8 @@ relying only on the display-version string.
 
 - Existing CE devices update with the normal `firmware.bin` OTA path; UART is
   required only when replacing stock firmware for the first time.
+- The first-flash ZIP carries its own verified checksum manifest containing only
+  the instructions, flasher, and merged image actually present in the bundle.
 - The public `v1.0.0C` schedule contract was already CE schedule version 3 and
   remains the accepted schedule version in `v1.1.0C`.
 - New MQTT fields and topics are additive. Consumers should ignore unknown

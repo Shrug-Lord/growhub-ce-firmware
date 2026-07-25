@@ -47,6 +47,22 @@ sha256_file() {
   die "shasum or sha256sum is required to verify release artifacts."
 }
 
+verify_sha256_manifest() {
+  local directory="$1"
+  local manifest="$directory/SHA256SUMS"
+  local expected file actual
+
+  require_file "$manifest"
+  while read -r expected file; do
+    [ -n "$expected" ] || continue
+    [ -n "$file" ] || die "Malformed checksum entry in $manifest"
+    require_file "$directory/$file"
+    actual="$(sha256_file "$directory/$file")"
+    [ "$actual" = "$expected" ] || \
+      die "Checksum mismatch for $directory/$file"
+  done < "$manifest"
+}
+
 main() {
   local raw_version version release_dir bundle_dir zip_path package_core_dir
   local build_firmware release_firmware
@@ -107,9 +123,12 @@ main() {
     die "Packaged firmware.bin does not match PlatformIO build output."
   fi
 
-  if ! cmp -s "$release_dir/SHA256SUMS" "$bundle_dir/SHA256SUMS"; then
-    die "Bundle SHA256SUMS does not match release SHA256SUMS."
+  if ! cmp -s "$release_dir/merged-firmware.bin" "$bundle_dir/merged-firmware.bin"; then
+    die "Bundled merged-firmware.bin does not match the release image."
   fi
+
+  verify_sha256_manifest "$release_dir"
+  verify_sha256_manifest "$bundle_dir"
 
   if command -v unzip >/dev/null 2>&1; then
     unzip -t "$zip_path" >/dev/null

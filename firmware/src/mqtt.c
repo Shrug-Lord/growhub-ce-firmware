@@ -1058,11 +1058,12 @@ void mqtt_publish_schedule_state(const char *source)
 
     if (active) {
         cJSON *schedule = build_schedule_json(outlets, outlet_count);
-        if (schedule) {
-            cJSON_AddItemToObject(root, "schedule", schedule);
-        } else {
-            cJSON_AddNullToObject(root, "schedule");
+        if (!schedule) {
+            ESP_LOGW(TAG, "Schedule state publish skipped: out of memory");
+            cJSON_Delete(root);
+            return;
         }
+        cJSON_AddItemToObject(root, "schedule", schedule);
     } else {
         cJSON_AddNullToObject(root, "schedule");
     }

@@ -189,6 +189,22 @@ write_sha256sums() {
   done
 }
 
+write_bundle_sha256sums() {
+  local output_dir="$1"
+  local sums_file="$output_dir/SHA256SUMS"
+  local file base digest
+
+  : > "$sums_file"
+  for file in \
+    "$output_dir/README-FIRST-FLASH.txt" \
+    "$output_dir/flash-growhub-ce.sh" \
+    "$output_dir/merged-firmware.bin"; do
+    base="$(basename "$file")"
+    digest="$(sha256_file "$file")"
+    printf '%s  %s\n' "$digest" "$base" >> "$sums_file"
+  done
+}
+
 write_bundle_readme() {
   local output_file="$1"
 
@@ -302,8 +318,8 @@ create_release_assets() {
   cp "$RELEASE_FLASHER" "$bundle_dir/flash-growhub-ce.sh"
   chmod +x "$bundle_dir/flash-growhub-ce.sh"
   cp "$release_dir/merged-firmware.bin" "$bundle_dir/merged-firmware.bin"
-  cp "$release_dir/SHA256SUMS" "$bundle_dir/SHA256SUMS"
   write_bundle_readme "$bundle_dir/README-FIRST-FLASH.txt"
+  write_bundle_sha256sums "$bundle_dir"
 
   make_zip "$release_dir" "$bundle_name" "$zip_path"
 

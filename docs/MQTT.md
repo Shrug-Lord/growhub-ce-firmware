@@ -129,6 +129,7 @@ Retained active schedule mirror published by the firmware.
 - Published after local web UI schedule save/clear
 - Published after relay mode changes from the web UI or MQTT
 - Published after outlet assignment changes clear affected schedule entries
+- Published when schedule evaluation changes relay output or runtime status
 - Published when `time_warning` or `sensor_warning` appears or clears, even if relay outputs do not change
 - QoS: `1`
 - Retained: yes
@@ -191,8 +192,9 @@ Payload shape:
 ```
 
 When no schedule is active, `active` is `false` and `schedule` is `null`.
-`source` is informational and currently uses `local`, `mqtt`, `time`, or
-`reconnect`.
+`source` is informational and currently uses `local`, `mqtt`, `time`,
+`schedule`, or `reconnect`. `schedule` identifies a state update emitted by
+the automatic schedule engine.
 Consumers should treat the firmware-published state as the device's active
 runtime state.
 
