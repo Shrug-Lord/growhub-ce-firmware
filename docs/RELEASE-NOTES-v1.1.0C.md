@@ -1,7 +1,8 @@
 # Growhub CE v1.1.0C Release Notes
 
-Status: release candidate; feature scope frozen pending final Command Center
-hardware-contract evidence.
+Status: release candidate; feature scope frozen. Command Center hardware-contract
+evidence is complete; the companion release remains pending host-compatibility
+evidence.
 
 Growhub CE `v1.1.0C` is the next firmware release after public `v1.0.0C` and
 the initial tested firmware baseline for Growhub Command Center. It remains
@@ -127,14 +128,17 @@ follow the enclosure label and product manual.
 - MQTT is plain local-network MQTT without TLS or username/password support.
 - The initial setup AP is open so first-time WiFi configuration is possible.
 
-## Remaining Release Evidence
+## Release Evidence
 
-Before publishing the tag:
+The Command Center `CE-1.1.0C` MQTT hardware checklist is complete against CE
+firmware commit `15dcf80807e8c9c6cd9faaf49ded4d5175c407b1`. The verified OTA
+image SHA-256 is
+`b547e5052afed85f846bc5e2496b47df86404b820b89127f7b635a2f9d6b4461`,
+and the verified first-flash ZIP SHA-256 is
+`8e0d10a2bb3ff1909a38bcd47a48234761eaa9c4f7c44dc8bb38b7f4932e19a9`.
 
-- complete the Command Center `CE-1.1.0C` MQTT hardware checklist against the
-  exact firmware commit and binary using the companion repository's
-  `docs/release-evidence/CE-1.1.0C.md`
-- record the firmware commit, Command Center commit, broker version, sanitized
-  observed payloads, and test date
-- rebuild with `scripts/build-verified-firmware.sh`
-- verify the generated `SHA256SUMS`, first-flash ZIP, and CE-to-CE OTA image
+Before publishing the firmware tag:
+
+- confirm the release assets match the hashes recorded above
+- keep the generated `SHA256SUMS`, first-flash ZIP, and CE-to-CE OTA image
+  together in the release
