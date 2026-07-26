@@ -411,7 +411,8 @@ Field notes:
 - `nId`: device MAC string
 - `name`: device name from NVS
 - `fw`: `GROWHUB_VERSION`
-- `l`: light percentage from the SH_NP01 sensor board
+- `l`: raw integer light level from the SH_NP01 sensor board, 0-255; this is
+  not a calibrated percentage or a lux measurement
 - `h`: relative humidity
 - `t`: temperature in Celsius on the wire
 - `a`: actuator string in fixed bit order

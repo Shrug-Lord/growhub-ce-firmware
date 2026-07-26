@@ -8,7 +8,7 @@
  *   Command (ESP32 → sensor, 5 bytes):  55 AA 05 00 04
  *   Response (sensor → ESP32, 11 bytes):
  *     55 AA 0B 10 00 [light] [T_hi T_lo] [RH_hi RH_lo] [sum]
- *       light  : uint8, 0-100 (phototransistor %)
+ *       light  : uint8, 0-255 raw phototransistor level (not calibrated percent)
  *       T_raw  : uint16 big-endian → T[°C] = -45 + 175 × raw / 65535
  *       RH_raw : uint16 big-endian → RH[%] = 100 × raw / 65535
  *       sum    : (sum of all preceding bytes) mod 256

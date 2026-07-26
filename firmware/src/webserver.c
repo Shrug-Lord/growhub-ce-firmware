@@ -189,7 +189,7 @@ static const char PAGE_HEADER[] =
     "var e;"
     "e=document.getElementById('st-time');if(e)e.textContent=d.time||'';"
     "e=document.getElementById('st-sens');if(e&&d.temp!=null){"
-      "e.textContent='Temp: '+fmt1(d.temp)+'°'+d.unit+' \\u00a0 Humidity: '+fmt1(d.rh)+'% \\u00a0 Light: '+d.light+'%';}"
+      "e.textContent='Temp: '+fmt1(d.temp)+'°'+d.unit+' \\u00a0 Humidity: '+fmt1(d.rh)+'% \\u00a0 Light level: '+d.light;}"
     "['o1','o2','o3','o4'].forEach(function(k){"
       "e=document.getElementById('b-'+k);"
       "if(e){var on=d.relays&&d.relays[k];"
@@ -530,7 +530,7 @@ static esp_err_t root_handler(httpd_req_t *req)
         "<div class='section'><h2>Status</h2>"
         "<p>WiFi: <span class='status %s'>%s</span>%s%s &nbsp; "
         "Command Center: <span class='status %s'>%s</span>%s</p>"
-        "<p><span id='st-sens'>Temp: %.1f&deg;%c &nbsp; Humidity: %.1f%% &nbsp; Light: %d%%</span></p>"
+        "<p><span id='st-sens'>Temp: %.1f&deg;%c &nbsp; Humidity: %.1f%% &nbsp; Light level: %d</span></p>"
         "<p>Time: <strong id='st-time'>%s</strong> &nbsp; Up: %s</p>"
         "<p>Schedule: <strong>%s</strong> &nbsp; Mode: <strong>%s</strong></p>",
         wifi_on ? "online" : "offline", wifi_on ? "Connected" : "Not connected",

@@ -6,7 +6,7 @@ typedef struct {
     float temperature;  // degrees C
     float humidity;     // relative humidity %
     int   co2;          // ppm (0 if no sensor connected)
-    int   light;        // 0-100% (phototransistor on SH_NP01 sensor board)
+    int   light;        // raw uint8 light level, 0-255 (not calibrated percent)
     bool  temp_valid;
     bool  co2_valid;
 } sensor_reading_t;

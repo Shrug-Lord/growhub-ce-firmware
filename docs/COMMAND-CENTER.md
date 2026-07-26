@@ -98,7 +98,8 @@ variant, but clients must not require it.
   }]
 }
 ```
-- `l` = light % (phototransistor on the SH_NP01 sensor board — real sensor reading)
+- `l` = raw integer light level, 0-255 (phototransistor on the SH_NP01 sensor
+  board; not a calibrated percentage or lux measurement)
 - `h` = humidity %
 - `t` = temperature °C (always Celsius on the wire regardless of display preference)
 - `a` = actuator string (8 chars): `[outlet2][outlet3][outlet4][outlet1][0][0][0][0]`

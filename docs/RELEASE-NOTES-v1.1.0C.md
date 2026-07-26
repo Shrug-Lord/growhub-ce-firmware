@@ -26,6 +26,8 @@ fully functional without Command Center or an MQTT broker.
 - MQTT commands and typed errors for outlet configuration and time sync
 - Retained schedule mirrors with time health, sensor health, warnings, and all
   four outlet status summaries
+- Correct raw `0`-`255` light-level contract and local display wording; the
+  sensor byte is not a calibrated percentage
 - Documented `schedule` source for automatic schedule-engine mirror updates
 - Immediate schedule reevaluation after relevant time, mode, assignment, and
   configuration changes

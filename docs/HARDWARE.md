@@ -200,7 +200,7 @@ Response from sensor to ESP32, 11 bytes:
 
 Field decoding:
 
-- `light`: `uint8`, 0-100
+- `light`: raw `uint8` phototransistor level, 0-255
 - `T_raw`: big-endian `uint16`
   - `temp_c = -45 + 175 * raw / 65535`
 - `RH_raw`: big-endian `uint16`
@@ -211,7 +211,7 @@ On the verified non-CO2 hardware, the firmware publishes:
 
 - temperature
 - relative humidity
-- light percentage from the SH_NP01 phototransistor
+- raw light level from the SH_NP01 phototransistor
 - no CO2 reading
 
 If a future board variant with real CO2 support is added, it should continue using the existing `sensor_reading_t` fields and set `co2_valid=true` only when the hardware actually provides a reading.
