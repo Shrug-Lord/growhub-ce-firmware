@@ -32,12 +32,12 @@ jobs:
         uses: actions/cache@v6.1.0
         with:
           path: |
-            firmware/.platformio-core/.cache
-            firmware/.platformio-core/packages
-            firmware/.platformio-core/platforms
-          key: ${{ runner.os }}-pio-release-${{ hashFiles('firmware/platformio.ini') }}
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: ${{ runner.os }}-pio-${{ hashFiles('firmware/platformio.ini') }}
           restore-keys: |
-            ${{ runner.os }}-pio-release-
+            ${{ runner.os }}-pio-
 
       - name: Verify release version matches firmware
         env:
@@ -65,7 +65,6 @@ jobs:
         id: package
         env:
           DISPATCH_VERSION: ${{ inputs.version }}
-          PLATFORMIO_CORE_DIR: ${{ github.workspace }}/firmware/.platformio-core
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME}"

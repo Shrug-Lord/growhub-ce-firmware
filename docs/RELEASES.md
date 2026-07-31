@@ -77,8 +77,9 @@ SKIP_BUILD=1 VERSION=v1.1.0C scripts/package-first-flash.sh
 
 When called without `VERSION`, the packager uses `GROWHUB_VERSION` from
 `firmware/platformio.ini`. Local calls use PlatformIO's normal user core unless
-`PLATFORMIO_CORE_DIR` is explicitly set; the release workflow sets it to the
-repository-local core covered by the CI cache.
+`PLATFORMIO_CORE_DIR` is explicitly set. Main and release CI share the same
+PlatformIO core and toolchain cache so both workflows build with identical
+resolved tools; the frozen release manifest still remains the final authority.
 
 The packager:
 
