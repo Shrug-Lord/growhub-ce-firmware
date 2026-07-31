@@ -1,10 +1,9 @@
 # Growhub CE v1.1.0C Release Notes
 
-Status: release candidate; feature scope frozen. Command Center hardware-contract
-evidence is complete; the companion release remains pending host-compatibility
-evidence.
+Status: released. Command Center hardware-contract, host-compatibility, and
+accessibility evidence is complete, and Command Center `v0.1.0` is published.
 
-Growhub CE `v1.1.0C` is the next firmware release after public `v1.0.0C` and
+Growhub CE `v1.1.0C` is the firmware release after public `v1.0.0C` and
 the initial tested firmware baseline for Growhub Command Center. It remains
 fully functional without Command Center or an MQTT broker.
 
@@ -105,7 +104,7 @@ relying only on the display-version string.
 
 ## Verified Hardware
 
-The release-candidate firmware was exercised on three physical controllers:
+The release firmware was exercised on three physical controllers:
 
 - two NIWA Growhub+ units
 - one original NIWA Growhub
@@ -134,11 +133,16 @@ The Command Center `CE-1.1.0C` MQTT hardware checklist is complete against CE
 firmware commit `15dcf80807e8c9c6cd9faaf49ded4d5175c407b1`. The verified OTA
 image SHA-256 is
 `b547e5052afed85f846bc5e2496b47df86404b820b89127f7b635a2f9d6b4461`,
-and the verified first-flash ZIP SHA-256 is
+the merged first-flash image SHA-256 is
+`df3bc3f7ee436d14f8ac51644fef757b23f62856fabf63a5f0025c7f59c8891a`,
+and the reproducible release ZIP SHA-256 is
+`157a73f1e26871ff8c11763e11de8e07d5e59c75046519512c973b3b3e3ce8a8`.
+
+The earlier bench ZIP was recorded as
 `8e0d10a2bb3ff1909a38bcd47a48234761eaa9c4f7c44dc8bb38b7f4932e19a9`.
+Its container hash included creation timestamps. Release packaging now fixes
+ZIP metadata and verifies a second byte-for-byte build; the tested firmware and
+merged-image payloads are unchanged.
 
-Before publishing the firmware tag:
-
-- confirm the release assets match the hashes recorded above
-- keep the generated `SHA256SUMS`, first-flash ZIP, and CE-to-CE OTA image
-  together in the release
+The GitHub Release keeps the generated `SHA256SUMS`, first-flash ZIP, merged
+image, and CE-to-CE OTA image together.

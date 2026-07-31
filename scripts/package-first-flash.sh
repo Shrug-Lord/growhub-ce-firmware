@@ -274,10 +274,35 @@ make_zip() {
   local bundle_name="$2"
   local zip_path="$3"
 
-  (
-    cd "$release_dir"
-    "$PYTHON_BIN" -m zipfile -c "$zip_path" "$bundle_name"
-  )
+  "$PYTHON_BIN" - "$release_dir" "$bundle_name" "$zip_path" <<'PY'
+import stat
+import sys
+import zipfile
+from pathlib import Path
+
+release_dir = Path(sys.argv[1])
+bundle_name = sys.argv[2]
+zip_path = Path(sys.argv[3])
+bundle_dir = release_dir / bundle_name
+fixed_timestamp = (1980, 1, 1, 0, 0, 0)
+
+entries = [bundle_dir, *sorted(bundle_dir.rglob("*"), key=lambda path: path.as_posix())]
+with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_STORED) as archive:
+    for path in entries:
+        relative = path.relative_to(release_dir).as_posix()
+        is_directory = path.is_dir()
+        if is_directory:
+            relative += "/"
+
+        info = zipfile.ZipInfo(relative, date_time=fixed_timestamp)
+        info.create_system = 3
+        permissions = path.stat().st_mode & 0o777
+        file_type = stat.S_IFDIR if is_directory else stat.S_IFREG
+        info.external_attr = (file_type | permissions) << 16
+        if is_directory:
+            info.external_attr |= 0x10
+        archive.writestr(info, b"" if is_directory else path.read_bytes())
+PY
 }
 
 create_release_assets() {
@@ -285,6 +310,7 @@ create_release_assets() {
   local bundle_name="growhub-ce-first-flash-$VERSION"
   local bundle_dir="$release_dir/$bundle_name"
   local zip_path="$release_dir/$bundle_name.zip"
+  local reproducibility_zip="$release_dir/.$bundle_name.reproducibility.zip"
 
   require_file "$BOOTLOADER_BIN"
   require_file "$PARTITIONS_BIN"
@@ -322,6 +348,11 @@ create_release_assets() {
   write_bundle_sha256sums "$bundle_dir"
 
   make_zip "$release_dir" "$bundle_name" "$zip_path"
+  make_zip "$release_dir" "$bundle_name" "$reproducibility_zip"
+  if ! cmp -s "$zip_path" "$reproducibility_zip"; then
+    die "First-flash ZIP is not reproducible."
+  fi
+  rm -f "$reproducibility_zip"
 
   log
   log "Release assets written to:"

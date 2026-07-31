@@ -17,9 +17,9 @@ than strict Semantic Versioning syntax; compatibility meaning follows
 
 The amount of code changed does not determine the version. A release version
 may accumulate features and fixes until its scope is frozen, but published tag
-contents are immutable. The `1.1.0C` scope is frozen as the next firmware
-release and initial Command Center compatibility baseline. Further compatible
-feature work belongs in `1.2.0C`; post-release fixes belong in `1.1.1C`.
+contents are immutable. `1.1.0C` is the current firmware release and initial
+Command Center compatibility baseline. Further compatible feature work belongs
+in `1.2.0C`; post-release fixes belong in `1.1.1C`.
 
 Command Center is versioned separately. Its first planned release is `v0.1.0`
 and records the exact CE firmware commit and `1.1.0C` compatibility evidence.
@@ -57,6 +57,7 @@ The verified build command:
 4. verifies every file named by the outer and bundled checksum manifests
 5. verifies the bundled merged image matches the release image
 6. verifies the first-flash ZIP integrity
+7. creates the ZIP twice and refuses packaging if the bytes differ
 
 Build from an existing local PlatformIO build without rebuilding:
 
@@ -76,7 +77,8 @@ The packager:
 3. creates `merged-firmware.bin`
 4. creates the outer `SHA256SUMS` for all release binaries
 5. creates a bundle-specific `SHA256SUMS` containing only files included in the ZIP
-6. creates `growhub-ce-first-flash-<version>.zip`
+6. creates `growhub-ce-first-flash-<version>.zip` with fixed, deterministic ZIP metadata
+7. recreates the ZIP and requires an exact byte-for-byte match
 
 ## GitHub Release Workflow
 

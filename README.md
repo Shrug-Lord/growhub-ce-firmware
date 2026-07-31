@@ -45,8 +45,8 @@ Current CE firmware supports:
 - CE-to-CE OTA updates
 - optional MQTT integration
 
-The frozen next-release firmware and initial Command Center compatibility
-baseline is `1.1.0C`.
+The current release firmware and initial Command Center compatibility baseline
+is `1.1.0C`.
 
 Known limitations:
 
@@ -109,7 +109,7 @@ See [docs/OTA.md](docs/OTA.md) for details.
 - [MQTT reference](docs/MQTT.md): topics and payloads
 - [Command Center integration](docs/COMMAND-CENTER.md): companion-app firmware contract
 - [Release process](docs/RELEASES.md): maintainer packaging and GitHub Releases
-- [v1.1.0C release notes](docs/RELEASE-NOTES-v1.1.0C.md): frozen next-release scope and compatibility notes
+- [v1.1.0C release notes](docs/RELEASE-NOTES-v1.1.0C.md): release scope, verification, and compatibility notes
 - [Development guide](docs/DEVELOPMENT.md): building from source
 - [Security policy](SECURITY.md): trusted-LAN threat model
 - [Why UART is required](docs/adr/0003-uart-required-first-flash.md): stock-to-CE install rationale
