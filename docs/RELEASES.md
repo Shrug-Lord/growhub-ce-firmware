@@ -49,6 +49,10 @@ Build firmware and release assets locally:
 scripts/build-verified-firmware.sh
 ```
 
+The firmware configuration enables ESP-IDF reproducible-build mode so clean
+builds omit date, time, and local-path metadata. This allows the same pinned
+toolchain and source to produce identical firmware on maintainer and CI hosts.
+
 The verified build command:
 
 1. builds firmware with `firmware/.venv/bin/pio run`

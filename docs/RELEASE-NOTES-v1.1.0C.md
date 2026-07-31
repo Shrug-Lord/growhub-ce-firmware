@@ -129,20 +129,28 @@ follow the enclosure label and product manual.
 
 ## Release Evidence
 
-The Command Center `CE-1.1.0C` MQTT hardware checklist is complete against CE
-firmware commit `15dcf80807e8c9c6cd9faaf49ded4d5175c407b1`. The verified OTA
-image SHA-256 is
-`b547e5052afed85f846bc5e2496b47df86404b820b89127f7b635a2f9d6b4461`,
-the merged first-flash image SHA-256 is
-`df3bc3f7ee436d14f8ac51644fef757b23f62856fabf63a5f0025c7f59c8891a`,
-and the reproducible release ZIP SHA-256 is
-`157a73f1e26871ff8c11763e11de8e07d5e59c75046519512c973b3b3e3ce8a8`.
+The Command Center `CE-1.1.0C` MQTT hardware checklist was completed against CE
+firmware commit `15dcf80807e8c9c6cd9faaf49ded4d5175c407b1`. Final firmware source
+commit `cb6d1d6edd213471ce9c0b3cd9df956b3c9a8220` only enables ESP-IDF's
+reproducible-build mode, removing build date, time, and path metadata without
+changing device-control logic. That exact final image was subsequently
+OTA-installed on both Growhub+ controllers and the original Growhub. All three
+passed the boot health gate, restored WiFi and sensor telemetry, and reconnected
+to Command Center; the AUTO test unit also resumed its persisted schedule and
+expected relay states.
 
-The earlier bench ZIP was recorded as
+The release OTA image SHA-256 is
+`b603015c3f5e61cd8f26f45d73335ea33de9abf401ffc7a8dd5f225157318cef`,
+the merged first-flash image SHA-256 is
+`bbb4318fcbc817f67eac706af19f1922cd53e72d64329727c58a55d68081c3b4`,
+and the reproducible release ZIP SHA-256 is
+`0c92be924c8140d1e6e60514169624d4d1cd5e365b461f7e5c124fff43ec5a77`.
+
+The earlier hardware-contract ZIP was recorded as
 `8e0d10a2bb3ff1909a38bcd47a48234761eaa9c4f7c44dc8bb38b7f4932e19a9`.
-Its container hash included creation timestamps. Release packaging now fixes
-ZIP metadata and verifies a second byte-for-byte build; the tested firmware and
-merged-image payloads are unchanged.
+Its container and firmware hashes included build timestamps. Final release
+packaging removes build metadata, fixes ZIP metadata, and verifies a second
+byte-for-byte ZIP build.
 
 The GitHub Release keeps the generated `SHA256SUMS`, first-flash ZIP, merged
 image, and CE-to-CE OTA image together.
