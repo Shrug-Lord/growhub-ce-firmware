@@ -133,20 +133,21 @@ follow the enclosure label and product manual.
 
 The Command Center `CE-1.1.0C` MQTT hardware checklist was completed against CE
 firmware commit `15dcf80807e8c9c6cd9faaf49ded4d5175c407b1`. Final firmware source
-commit `cb6d1d6edd213471ce9c0b3cd9df956b3c9a8220` only enables ESP-IDF's
-reproducible-build mode, removing build date, time, and path metadata without
-changing device-control logic. The resulting maintainer-host image was
+commit `9977ce8e6c6f2e73aa3622c1b48e4cb0f4c16ef3` enables ESP-IDF's
+reproducible-build mode and pins the app descriptor to version `1.1.0C`,
+removing build date, time, path, and Git-revision drift without changing
+device-control logic. The resulting maintainer-host image was
 OTA-installed on both Growhub+ controllers and the original Growhub. All three
 passed the boot health gate, restored WiFi and sensor telemetry, and reconnected
 to Command Center; the AUTO test unit also resumed its persisted schedule and
 expected relay states.
 
 The maintainer-host OTA image SHA-256 is
-`b603015c3f5e61cd8f26f45d73335ea33de9abf401ffc7a8dd5f225157318cef`,
+`6a7c9bf460dee414ea8a1fa5a9b350c7422e0d90470e2e5b5580b2deefd64e32`,
 the merged first-flash image SHA-256 is
-`bbb4318fcbc817f67eac706af19f1922cd53e72d64329727c58a55d68081c3b4`,
+`60c5f528b7c61f6f9fa1c6a96e7c99c8050a936806033340bd3836f4f41af816`,
 and its deterministic ZIP SHA-256 is
-`0c92be924c8140d1e6e60514169624d4d1cd5e365b461f7e5c124fff43ec5a77`.
+`88514ecf9eedc7270a47a1b2504d56fe82a40ac2828e23fc90e53642083020de`.
 
 The earlier hardware-contract ZIP was recorded as
 `8e0d10a2bb3ff1909a38bcd47a48234761eaa9c4f7c44dc8bb38b7f4932e19a9`.
