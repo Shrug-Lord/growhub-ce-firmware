@@ -50,8 +50,8 @@ scripts/build-verified-firmware.sh
 ```
 
 The firmware configuration enables ESP-IDF reproducible-build mode so clean
-builds omit date, time, and local-path metadata. This allows the same pinned
-toolchain and source to produce identical firmware on maintainer and CI hosts.
+builds omit date, time, and local-path metadata. Release evidence uses the
+retained Linux CI artifact because host-platform linker output may still differ.
 
 The verified build command:
 
