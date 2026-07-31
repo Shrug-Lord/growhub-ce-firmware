@@ -39,6 +39,17 @@ jobs:
       - name: Build CE firmware and verify first-flash package
         run: PIO_BIN=pio scripts/build-verified-firmware.sh
 
+      - name: Verify frozen release hashes when present
+        run: |
+          set -euo pipefail
+          fw_version="$(sed -nE 's/^[[:space:]]*-DGROWHUB_VERSION=\"([^\"]+)\"/\1/p' firmware/platformio.ini)"
+          version="v${fw_version#v}"
+          manifest="$GITHUB_WORKSPACE/release-manifests/$version.sha256"
+          if [ -f "$manifest" ]; then
+            cd "dist/growhub-ce-$version"
+            sha256sum --check "$manifest"
+          fi
+
       - name: Report binary size
         working-directory: firmware
         run: |

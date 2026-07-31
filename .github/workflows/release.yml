@@ -77,6 +77,20 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "release_dir=dist/growhub-ce-$version" >> "$GITHUB_OUTPUT"
 
+      - name: Verify frozen release hashes
+        env:
+          VERSION: ${{ steps.package.outputs.version }}
+          RELEASE_DIR: ${{ steps.package.outputs.release_dir }}
+        run: |
+          set -euo pipefail
+          manifest="$GITHUB_WORKSPACE/release-manifests/$VERSION.sha256"
+          if [ ! -f "$manifest" ]; then
+            echo "Frozen release manifest not found: $manifest" >&2
+            exit 1
+          fi
+          cd "$RELEASE_DIR"
+          sha256sum --check "$manifest"
+
       - name: Create draft release if needed
         env:
           GH_TOKEN: ${{ github.token }}

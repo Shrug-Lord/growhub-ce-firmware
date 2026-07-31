@@ -63,6 +63,12 @@ The verified build command:
 6. verifies the first-flash ZIP integrity
 7. creates the ZIP twice and refuses packaging if the bytes differ
 
+Linux CI retains the complete candidate bundle. After that exact artifact has
+passed hardware validation, maintainers freeze every release-file hash in
+`release-manifests/<version>.sha256`. Both the main-branch build and release
+workflow verify that manifest, and the release workflow refuses to create or
+update a draft when the manifest is missing or any byte differs.
+
 Build from an existing local PlatformIO build without rebuilding:
 
 ```bash

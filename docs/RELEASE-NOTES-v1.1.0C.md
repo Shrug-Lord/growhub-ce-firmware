@@ -1,9 +1,7 @@
 # Growhub CE v1.1.0C Release Notes
 
-Status: release candidate; feature scope frozen. Command Center
-hardware-contract, host-compatibility, and accessibility evidence is complete,
-and Command Center `v0.1.0` is published. Exact Linux release-artifact
-validation is in progress.
+Status: released. Command Center hardware-contract, host-compatibility, and
+accessibility evidence is complete, and Command Center `v0.1.0` is published.
 
 Growhub CE `v1.1.0C` is the firmware release after public `v1.0.0C` and
 the initial tested firmware baseline for Growhub Command Center. It remains
@@ -136,18 +134,18 @@ firmware commit `15dcf80807e8c9c6cd9faaf49ded4d5175c407b1`. Final firmware sourc
 commit `9977ce8e6c6f2e73aa3622c1b48e4cb0f4c16ef3` enables ESP-IDF's
 reproducible-build mode and pins the app descriptor to version `1.1.0C`,
 removing build date, time, path, and Git-revision drift without changing
-device-control logic. The resulting maintainer-host image was
+device-control logic. The exact retained Linux CI image was
 OTA-installed on both Growhub+ controllers and the original Growhub. All three
 passed the boot health gate, restored WiFi and sensor telemetry, and reconnected
 to Command Center; the AUTO test unit also resumed its persisted schedule and
 expected relay states.
 
-The maintainer-host OTA image SHA-256 is
-`6a7c9bf460dee414ea8a1fa5a9b350c7422e0d90470e2e5b5580b2deefd64e32`,
+The release OTA image SHA-256 is
+`7b10172a31b3f95a1718f82b80f602f1a3ead7570c4f5a6d63acb247762a0826`,
 the merged first-flash image SHA-256 is
-`60c5f528b7c61f6f9fa1c6a96e7c99c8050a936806033340bd3836f4f41af816`,
-and its deterministic ZIP SHA-256 is
-`88514ecf9eedc7270a47a1b2504d56fe82a40ac2828e23fc90e53642083020de`.
+`3cf9db38b2f2747bfe9ee802ba88e623c98716ee8b316fdad46b0939e51338ef`,
+and the deterministic release ZIP SHA-256 is
+`1786d2173477c811071282322f064339a3ac6029d728aaed85a84875d4004020`.
 
 The earlier hardware-contract ZIP was recorded as
 `8e0d10a2bb3ff1909a38bcd47a48234761eaa9c4f7c44dc8bb38b7f4932e19a9`.
@@ -155,10 +153,9 @@ Its container and firmware hashes included build timestamps. Final release
 packaging removes build metadata, fixes ZIP metadata, and verifies a second
 byte-for-byte ZIP build.
 
-The retained Linux CI artifact is the canonical public release candidate.
-Because host-platform linker output can differ even after volatile metadata is
-removed, its exact hashes will replace the maintainer-host hashes above after
-the CI artifact passes the same three-device OTA validation.
+All six release-file hashes are frozen in
+`release-manifests/v1.1.0C.sha256`. Main-branch CI and the tag release workflow
+must reproduce that manifest before GitHub can attach release assets.
 
 The GitHub Release keeps the generated `SHA256SUMS`, first-flash ZIP, merged
 image, and CE-to-CE OTA image together.
