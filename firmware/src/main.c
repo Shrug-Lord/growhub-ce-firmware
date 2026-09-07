@@ -236,7 +236,11 @@ static void sensor_loop_task(void *arg)
             publish_sensor_data(&reading);
         }
 
-        vTaskDelay(pdMS_TO_TICKS(cfg->report_interval_s * 1000));
+        // Address discovery must not wait for a long sensor reporting interval.
+        for (int second = 0; second < cfg->report_interval_s; second++) {
+            mqtt_poll_network_state();
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
     }
 }
 

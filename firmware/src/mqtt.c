@@ -5,6 +5,10 @@
 #include "sensors.h"
 #include "ota.h"
 #include "time_sync.h"
+#include "wifi.h"
+#include "esp_netif.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "mqtt_client.h"
 #include "esp_log.h"
 #include "cJSON.h"
@@ -16,6 +20,8 @@
 static const char *TAG = "mqtt";
 static esp_mqtt_client_handle_t s_client = NULL;
 static bool s_connected = false;
+static SemaphoreHandle_t s_network_lock = NULL;
+static volatile uint32_t s_network_generation = 0;
 
 // Topic buffers (built once after connect)
 static char s_topic_sensor[80];
@@ -25,6 +31,7 @@ static char s_topic_config[80];
 static char s_topic_grow[80];
 static char s_topic_ota[80];
 static char s_topic_status[80];
+static char s_topic_network[80];
 static char s_topic_schedule_action[96];
 static char s_topic_schedule_error[96];
 static char s_topic_schedule_state[96];
@@ -55,6 +62,7 @@ static void build_topics(void)
     snprintf(s_topic_grow,          sizeof(s_topic_grow),          "growhub/%s/grow", mac);
     snprintf(s_topic_ota,           sizeof(s_topic_ota),           "growhub/%s/ota", mac);
     snprintf(s_topic_status,        sizeof(s_topic_status),        "growhub/%s/status", mac);
+    snprintf(s_topic_network,       sizeof(s_topic_network),       "growhub/%s/network/state", mac);
     snprintf(s_topic_schedule_action,sizeof(s_topic_schedule_action),"growhub/%s/schedule/action", mac);
     snprintf(s_topic_schedule_error, sizeof(s_topic_schedule_error), "growhub/%s/schedule/error", mac);
     snprintf(s_topic_schedule_state,sizeof(s_topic_schedule_state),"growhub/%s/schedule/state", mac);
@@ -818,6 +826,7 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base,
     switch (event_id) {
     case MQTT_EVENT_CONNECTED:
         s_connected = true;
+        s_network_generation++;
         ESP_LOGI(TAG, "Connected to broker");
         // Publish online status (retained)
         esp_mqtt_client_publish(s_client, s_topic_status, "online", 0, 1, 1);
@@ -889,6 +898,8 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base,
 void mqtt_init(void)
 {
     build_topics();
+    if (!s_network_lock) s_network_lock = xSemaphoreCreateMutex();
+    if (!s_network_lock) ESP_LOGE(TAG, "Network address reporting unavailable: mutex allocation failed");
 
     const growhub_config_t *cfg = config_get();
 
@@ -925,6 +936,46 @@ void mqtt_publish_sensor(const char *json_payload)
 {
     if (!s_connected || !s_client) return;
     esp_mqtt_client_publish(s_client, s_topic_sensor, json_payload, 0, 0, 0);
+}
+
+// Called from the sensor task once per second, independently of its report interval.
+// Keep socket recovery and MQTT queue work out of the Wi-Fi event handler.
+void mqtt_poll_network_state(void)
+{
+    static char observed_ip[16] = "";
+    static char published_ip[16] = "";
+    static uint32_t published_generation = 0;
+    if (!s_network_lock || xSemaphoreTake(s_network_lock, 0) != pdTRUE) return;
+    if (!s_client || !wifi_is_connected()) goto done;
+
+    esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    esp_netif_ip_info_t info;
+    if (!netif || esp_netif_get_ip_info(netif, &info) != ESP_OK || info.ip.addr == 0) goto done;
+    char ip[16];
+    snprintf(ip, sizeof(ip), IPSTR, IP2STR(&info.ip));
+    bool changed = observed_ip[0] && strcmp(observed_ip, ip) != 0;
+    if (changed && s_connected) {
+        // DHCP can replace an address without a Wi-Fi disconnect event.
+        // The previous TCP connection belongs to the old address.
+        // reconnect() only accepts WAIT_RECONNECT; request an asynchronous
+        // disconnect first and let the enabled automatic reconnect recover.
+        if (esp_mqtt_client_disconnect(s_client) == ESP_OK) {
+            snprintf(observed_ip, sizeof(observed_ip), "%s", ip);
+        }
+        goto done;
+    }
+    snprintf(observed_ip, sizeof(observed_ip), "%s", ip);
+    uint32_t generation = s_network_generation;
+    if (s_connected && (generation != published_generation || strcmp(ip, published_ip) != 0)) {
+        char payload[96];
+        snprintf(payload, sizeof(payload), "{\"v\":1,\"ip\":\"%s\",\"http_port\":80}", ip);
+        if (esp_mqtt_client_enqueue(s_client, s_topic_network, payload, 0, 1, 1, true) >= 0) {
+            snprintf(published_ip, sizeof(published_ip), "%s", ip);
+            published_generation = generation;
+        }
+    }
+done:
+    xSemaphoreGive(s_network_lock);
 }
 
 void mqtt_publish_outlets_state(const char *source)
@@ -1112,11 +1163,14 @@ bool mqtt_is_enabled(void)
 
 void mqtt_stop(void)
 {
+    // Serialize destruction with the network reporting task's client access.
+    if (s_network_lock) xSemaphoreTake(s_network_lock, portMAX_DELAY);
     if (s_client) {
         esp_mqtt_client_stop(s_client);
         esp_mqtt_client_destroy(s_client);
         s_client = NULL;
     }
     s_connected = false;
+    if (s_network_lock) xSemaphoreGive(s_network_lock);
     ESP_LOGI(TAG, "MQTT client stopped");
 }

@@ -1,6 +1,6 @@
 # Command Center Integration Reference
 
-*Last updated: 2026-07-14 (frozen Command Center MQTT baseline) | Firmware version: 1.1.0C*
+*Last updated: 2026-09-07 | Baseline: 1.1.0C | Development firmware: 1.2.0C*
 
 Use this doc to brief the companion Command Center project without reading the full firmware repo.
 
@@ -60,6 +60,23 @@ firmware-owned assignments and labels for schedule-template preflight.
 ---
 
 ## MQTT Interface
+
+### Optional automatic management link (`1.2.0C`)
+
+The additive `growhub/<MAC>/network/state` report carries
+`{"v":1,"ip":"192.0.2.10","http_port":80}` with QoS 1 and retain enabled.
+See [MQTT publish behavior](MQTT.md#optional-management-address-120c)
+for connection and address-change handling. This extension is introduced in
+development version `1.2.0C`, outside the frozen 1.1.0C baseline. Command Center
+detects support from a valid report rather than the version string. Missing
+optional network state never blocks older firmware workflows.
+
+Command Center mirrors the last valid address for the same MAC and returns a
+management URL through the device API. The next successful dashboard poll updates
+the link, which opens in a new tab. Online/offline transitions and changes from one
+known address to another belong in Recent activity; first discovery, identical
+reports, and unchanged retained replay do not produce address-change entries.
+Grow journal entries and device history retain their MAC-based ownership.
 
 **Broker:** User-configured host:port. Soft-disable supported (flag in NVS -- broker config preserved, client won't connect).
 

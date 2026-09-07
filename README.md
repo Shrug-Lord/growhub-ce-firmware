@@ -48,6 +48,9 @@ Current CE firmware supports:
 The current release firmware and initial Command Center compatibility baseline
 is `1.1.0C`.
 
+Development builds are versioned `1.2.0C` and add automatic MQTT reporting of the
+device's management address. See the [v1.2.0C development notes](docs/RELEASE-NOTES-v1.2.0C.md).
+
 Known limitations:
 
 - first install requires UART

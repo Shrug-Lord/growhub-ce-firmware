@@ -9,6 +9,10 @@ void mqtt_init(void);
 // Publish a sensor reading. Called by the main sensor loop.
 void mqtt_publish_sensor(const char *json_payload);
 
+// Refresh optional retained LAN address state and recover changed-address sockets.
+// Call from an application task, not a Wi-Fi/MQTT event callback.
+void mqtt_poll_network_state(void);
+
 // Publish retained active schedule state for Command Center mirroring.
 void mqtt_publish_schedule_state(const char *source);
 

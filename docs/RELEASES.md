@@ -21,6 +21,14 @@ contents are immutable. `1.1.0C` is the current firmware release and initial
 Command Center compatibility baseline. Further compatible feature work belongs
 in `1.2.0C`; post-release fixes belong in `1.1.1C`.
 
+The current development firmware is `1.2.0C`, including the optional retained
+MQTT management-address report described in the
+[development release notes](RELEASE-NOTES-v1.2.0C.md). Its release artifacts have
+not yet been frozen or published. Both `GROWHUB_VERSION` in
+`firmware/platformio.ini` and `CONFIG_APP_PROJECT_VER` in
+`firmware/sdkconfig.growhub` must match the intended firmware version; building
+does not increment either value automatically.
+
 Command Center is versioned separately. Its first planned release is `v0.1.0`
 and records the exact CE firmware commit and `1.1.0C` compatibility evidence.
 

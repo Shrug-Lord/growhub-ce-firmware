@@ -3,8 +3,8 @@
 MQTT is optional in Community Edition firmware. A single Growhub runs fully standalone with WiFi + the built-in web UI. MQTT exists to integrate with a local broker and, optionally, a separate fleet-management companion such as Growhub Command Center.
 
 This document describes the public MQTT interface for the frozen CE `1.1.0C`
-baseline: topic schema, payloads, schedule format, and the NVS keys that affect
-MQTT behavior.
+baseline and the explicitly marked `1.2.0C` extension: topic schema, payloads,
+schedule format, and the NVS keys that affect MQTT behavior.
 
 ## Transport and connection model
 
@@ -57,6 +57,31 @@ The public CE contract uses these topic names:
 - `growhub/<MAC>/ota`
 
 ## Publish behavior
+
+### Optional management address (`1.2.0C`)
+
+`growhub/<MAC>/network/state` is an additive extension introduced in development
+version `1.2.0C`, beyond the frozen CE 1.1.0C baseline. Older firmware does not publish it; its absence must not
+block retained-state readiness or device controls.
+
+```json
+{"v":1,"ip":"192.0.2.10","http_port":80}
+```
+
+Firmware publishes this state with QoS 1 and retain enabled after each MQTT
+connection/reconnection and when its Wi-Fi station IPv4 address changes. The
+sensor task checks the station address approximately once per second,
+independently of the configured sensor reporting interval. If an address changes
+while MQTT still considers its old socket connected, firmware requests an
+asynchronous disconnect and lets automatic reconnection replace that socket.
+The current address is queued after connectivity recovers. No network operation
+runs in the Wi-Fi event handler.
+
+The address describes the local HTTP management server, not device identity or
+presence. Consumers must keep MAC identity stable, validate the IPv4 address and
+port, and label offline state as the last reported address. Identical retained
+replays are not address-change events. This state does not change Wi-Fi settings,
+outlet configuration, or schedules.
 
 ### `growhub/<MAC>/status`
 
