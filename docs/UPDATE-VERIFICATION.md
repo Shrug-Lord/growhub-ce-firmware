@@ -1,16 +1,19 @@
 # Release update verification
 
-Status: implementation complete; release publication gates remain open.
+Status: implementation and exact Linux CI OTA validation complete; destructive
+first-flash release checks remain open.
 
 ## Candidate
 
 - CE development version: `1.2.0C` (both application version fields).
 - Companion development version: `0.2.0` (root/server packages and lockfiles).
-- Final local firmware SHA-256:
-  `cad690f8392001bb215facb29235d300978eb81cebc2e58c92eb11b577fb7ceb`.
-- Final local first-flash ZIP SHA-256:
-  `4bd7d1cd08b87dd48cdde3b8270965c95c5a6cba0b3555a66591c73417b11925`.
-- These are local development artifacts, not frozen Linux CI release artifacts.
+- Candidate commit: `5fad38eff1400add60a7e6ec7a37ec090ad48daf`.
+- Exact Linux CI firmware SHA-256:
+  `6237d69d0d872335374fe2accdf71a0eca611b2db8da151ba3a3bdff1d43e510`.
+- Exact Linux CI first-flash ZIP SHA-256:
+  `45c7d2873eed38b9abc79d02b3a0e1e43812c59120a5378478ad83b9c927fd2f`.
+- CI run: `https://github.com/Shrug-Lord/growhub-ce-firmware/actions/runs/34256340407`.
+- The tested hashes are frozen in `release-manifests/v1.2.0C.sha256`.
 
 ## Verification mapped to the plan
 
@@ -20,6 +23,10 @@ Status: implementation complete; release publication gates remain open.
   leading-zero, and large-number cases.
 - A selected bench controller boots `1.2.0C` after CE-to-CE file upload, preserving
   identity, outlet state, Wi-Fi/MQTT connectivity, and valid time.
+- The exact retained Linux CI image passed that same OTA/reboot check. A deliberately
+  interrupted upload aborted without reboot or boot-slot change. An isolated test
+  image with a forced health-gate failure booted, was rejected, and rolled back to
+  the exact CI image. Test-only source and binaries remained outside the repository.
 - Real GitHub release discovery reads the published `v1.1.0C` asset and digest,
   correctly offering no downgrade from `1.2.0C`.
 - An isolated instance of the actual Command Center MQTT mirror reads retained
@@ -86,8 +93,8 @@ publishing a new tag. Production sources stayed at `1.2.0C` throughout.
   artifact or committed source change.
 
 This proves the implemented official download/install path using an existing
-release. It does not replace validating the exact eventual Linux CI `1.2.0C`
-release artifact or intentionally exercising power loss/boot rollback.
+release. The exact Linux CI `1.2.0C` image was subsequently validated through
+file upload, interrupted transfer, and boot-health rollback as described above.
 
 ## Failure tickets resolved
 
@@ -102,14 +109,8 @@ release artifact or intentionally exercising power loss/boot rollback.
 
 ## Remaining release gates
 
-- Validate the exact frozen Linux CI artifact and intentionally exercise transfer
-  interruption and boot rollback on release hardware. The controlled official
-  download and checksum-mismatch tests above passed against an existing release.
-- The updated Linux/systemd host service has not been exercised through a real
-  Docker rebuild/restart on a Linux/Pi release host in this session. Tests cover
-  request validation/consumption, confirmation, and failure behavior; the existing
-  backup-first script now also checks the running server version after readiness.
-- Complete the first-flash and other hardware checks in `RELEASES.md`, validate
-  the exact Linux CI candidate, then freeze its release hashes before tagging.
-- Command Center production deployment and publishing either release were not
-  performed as part of implementation verification.
+- Complete the exact first-flash ZIP, stock-backup, setup-AP, front-button, LED,
+  and recovery checks in `RELEASES.md` on appropriate Growhub and Growhub+
+  hardware. These reset or directly manipulate hardware and were not folded into
+  the OTA validation above.
+- Review the draft release and its generated assets before publishing.
