@@ -21,6 +21,14 @@ from `1.1.0C` to `1.2.0C` under the [version policy](RELEASES.md#version-policy)
 Both the displayed firmware version and the ESP-IDF application descriptor are
 set to `1.2.0C`. Command Center is versioned separately.
 
+## Opt-in release updates
+
+Adds periodic stable-release checks, manual Check now, release prompts, Later,
+Skip this version, and explicitly confirmed installation in the standalone page
+and Command Center 0.2.0 device cards. Checking defaults off; installation is never
+unattended. Official downloads verify HTTPS, SHA-256, image size, and embedded
+version before changing the boot partition. See [OTA reference](OTA.md).
+
 ## Compatibility
 
 - Existing CE 1.1.0C topics, schedules, and control behavior remain supported.
@@ -32,7 +40,7 @@ set to `1.2.0C`. Command Center is versioned separately.
 
 See [MQTT reference](MQTT.md#optional-management-address-120c) for the payload.
 
-## Verification and release status
+## Prior management-address evidence
 
 The address-reporting implementation was tested on a selected bench controller:
 initial retained reporting, an actual DHCP change after reboot/reconnect, the new
@@ -47,3 +55,11 @@ Before a tagged release, retain the Linux CI candidate, validate that exact imag
 on hardware, and freeze its hashes in `release-manifests/v1.2.0C.sha256`, following
 the [release process](RELEASES.md). The published `v1.1.0C` tag and artifact hashes
 remain immutable.
+
+## Current update verification and release status
+
+The 1.2.0C development update candidate was built, packaged, and installed on the
+selected bench device. Live GitHub discovery and bidirectional MQTT preference
+synchronization passed. See [UPDATE-VERIFICATION.md](UPDATE-VERIFICATION.md) for
+exact binary evidence and remaining release gates. This is not yet a published
+or frozen release.

@@ -23,7 +23,7 @@ Not supported over the air.
 
 ### CE to CE updates
 
-Supported through three manual trigger paths:
+Supported through an official release update flow and three manual trigger paths:
 
 1. web UI: flash from URL
 2. web UI: upload local `.bin`
@@ -31,10 +31,48 @@ Supported through three manual trigger paths:
 
 Deliberately not supported:
 
-- automatic update checks
 - unattended auto-update
 - delta patches
 - stock-to-CE migration via OTA
+
+## Official release updates (1.2.0C)
+
+The device management page and Command Center device cards expose the same
+controller-owned update state. Periodic checks default off. When enabled, checks
+run after startup and every six hours, with up to one minute of randomized delay.
+Check now remains available while periodic checks are off; the controller spaces
+manual checks by at least 30 seconds. Network failures do not trigger installation.
+
+Only newer stable `vMAJOR.MINOR.PATCHC` GitHub Releases are offered. The checker
+requires a `firmware.bin` asset, a SHA-256 digest in GitHub's asset metadata, and
+an image size within the device's OTA partition. The device validates HTTPS
+certificates and follows only HTTPS redirects to GitHub's API, repository, and
+release-asset hosts. This official flow does not use the permissive manual URL
+OTA path and cannot redirect to HTTP.
+
+Update opens a final version/restart confirmation. The accepted action uses the
+exact checked tag and asset digest. The download is hashed while writing the
+inactive slot; size, SHA-256, ESP image validation, and the embedded version must
+all match before selecting the new boot partition. Existing boot-health rollback
+remains in effect where supported by the installed bootloader. Failed installs
+stop and provide recovery guidance; they are never retried automatically.
+
+Later defers the current release for 24 hours; Skip this version suppresses its
+prompt while keeping manual installation available. A newer version can prompt
+again. Preferences and dismissals persist in the `ce_updates` NVS namespace.
+Without trustworthy wall time after reboot, a saved deferral conservatively waits
+another 24 hours of uptime. Command Center mirrors this state over MQTT and does
+not independently change the controller's discovery results.
+
+Local API: `GET /updates` reads state; `POST /updates` accepts the versioned actions
+specified in [MQTT reference](MQTT.md#release-update-state-and-actions-120c).
+An accepted action returns HTTP 202; callers must observe subsequent state for
+acknowledgement and outcome. Invalid or busy requests return HTTP 400.
+
+SHA-256 protects against mismatched/corrupt artifacts; this is not an independent
+firmware-signing system. GitHub and its HTTPS identity remain the release trust
+source. See [update verification](UPDATE-VERIFICATION.md) for tested paths and the
+remaining release gates.
 
 ## Release and artifact model
 
@@ -196,6 +234,24 @@ Practical guidance:
 - use **HTTP** only for trusted LAN or dev scenarios
 - file upload is the simplest option when you do not want the device fetching from another host at all
 
+### HTTPS URL OTA certificate verification
+
+The URL OTA HTTP client attaches ESP-IDF's built-in certificate bundle through
+`esp_crt_bundle_attach`. This enables normal TLS chain and hostname verification
+for each HTTPS connection using roots embedded in the CE application. It does
+not add firmware signing or release-manifest verification.
+
+Browser upload and deliberately permitted trusted-LAN HTTP URL OTA are
+unaffected. HTTP remains enabled, including as a possible redirect destination,
+so an HTTPS URL does not guarantee that every hop stays HTTPS. Before treating
+HTTPS URL OTA as bench-validated for a release:
+
+- fetch a known-good firmware URL with a publicly trusted certificate
+- verify a self-signed or wrong-host certificate fails before any OTA data is
+  written or the boot partition is changed
+- decide whether HTTPS-to-HTTP redirects remain within the trusted-LAN HTTP
+  policy
+
 ### Reachability requirements
 
 Each update path has different network needs:
@@ -322,10 +378,9 @@ Only use this pattern when the device can route to `<host-ip>`.
 ## Non-goals for v1
 
 - stock-firmware OTA migration
-- automatic release checks
 - silent background updates
 - signed-release verification pipeline inside the device
 - a richer in-device update manager or channel selector
 
-Those may be revisited later, but they remain intentionally out of scope for
-the CE `1.x` release series.
+These remain outside the current release scope. Opt-in release checking and
+user-confirmed installation are supported in development firmware `1.2.0C`.

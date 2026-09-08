@@ -6,6 +6,8 @@
 #include "sensors.h"
 #include "schedule.h"
 #include "ota.h"
+#include "release_update.h"
+#include "release_update_ui.h"
 #include "time_sync.h"
 #include "esp_http_server.h"
 #include "esp_ota_ops.h"
@@ -1039,6 +1041,7 @@ static esp_err_t root_handler(httpd_req_t *req)
     // --- Firmware Update section ---
     n += snprintf(buf + n, BUF_SIZE - n,
         "<div class='section'><h2>Firmware Update</h2>"
+        "<div id='release-updates'></div><script defer src='/update_ui.js'></script>"
         "<label>Upload .bin file</label>"
         "<input type='file' id='fw-file' accept='.bin'>"
         "<div id='fw-prog' style='display:none'>"
@@ -2018,11 +2021,38 @@ static esp_err_t status_handler(httpd_req_t *req)
 // ---------------------------------------------------------------------------
 // Server init
 // ---------------------------------------------------------------------------
+static esp_err_t update_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    if (req->method == HTTP_POST) {
+        char body[513]; int used = 0;
+        if (req->content_len <= 0 || req->content_len > 512) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid action size");
+        while (used < req->content_len) {
+            int n = httpd_req_recv(req, body + used, req->content_len - used);
+            if (n <= 0) return ESP_FAIL;
+            used += n;
+        }
+        body[used] = 0;
+        if (!release_update_action(body, used)) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid action or update busy");
+        httpd_resp_set_status(req, "202 Accepted");
+        return httpd_resp_sendstr(req, "{\"accepted\":true}");
+    }
+    char *json = release_update_json();
+    if (!json) return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+    esp_err_t result = httpd_resp_sendstr(req, json); free(json); return result;
+}
+static esp_err_t update_js_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/javascript");
+    return httpd_resp_sendstr(req, RELEASE_UPDATE_JS);
+}
+
 void webserver_init(void)
 {
     httpd_config_t http_cfg = HTTPD_DEFAULT_CONFIG();
     http_cfg.uri_match_fn = httpd_uri_match_wildcard;
-    http_cfg.max_uri_handlers = 9;
+    http_cfg.max_uri_handlers = 12;
     http_cfg.stack_size = 8192;
 
     httpd_handle_t server = NULL;
@@ -2033,6 +2063,9 @@ void webserver_init(void)
     }
 
     httpd_uri_t uris[] = {
+        {.uri="/updates", .method=HTTP_GET, .handler=update_handler},
+        {.uri="/updates", .method=HTTP_POST, .handler=update_handler},
+        {.uri="/update_ui.js", .method=HTTP_GET, .handler=update_js_handler},
         {.uri="/",           .method=HTTP_GET,  .handler=root_handler},
         {.uri="/save",       .method=HTTP_GET,  .handler=save_handler},
         {.uri="/save",       .method=HTTP_POST, .handler=save_handler},

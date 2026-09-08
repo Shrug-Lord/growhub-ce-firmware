@@ -881,3 +881,37 @@ Behavior details:
 - Treat the MQTT OTA topic as a privileged control path on the trusted LAN.
 - The outlet assignment/label topics and `time/action` are additive public MQTT
   contracts introduced in the frozen `1.1.0C` minor-release scope.
+
+## Release update state and actions (1.2.0C)
+
+`growhub/<MAC>/update/state` is optional retained QoS 1 state. It does not gate
+legacy device readiness. The controller publishes changes and republishes after
+MQTT reconnect. Command Center persists a separate optional mirror.
+
+```json
+{"v":1,"checks_enabled":false,"current_version":"1.2.0C","tag":"v1.3.0C","stage":"idle","error":"","action_id":"request-123","target_tag":"","checked_at":1788827925,"bytes":0,"size":1100000,"available":true,"prompt":true,"release_url":"https://github.com/Shrug-Lord/growhub-ce-firmware/releases/tag/v1.3.0C"}
+```
+
+`checked_at` is Unix seconds, or zero if unknown. `bytes` and `size` are bytes.
+Stages are `idle`, `checking`, `check_failed`, `downloading`, `restarting`,
+`installed`, `failed`, or `unavailable`. `action_id` identifies the most recently
+processed action. `target_tag` records a pending boot target. The current firmware
+version plus boot health establishes installation success; loss of contact alone
+does not prove success or failure.
+
+Publish actions to `growhub/<MAC>/update/action` at QoS 1, **retain false**:
+
+```json
+{"v":1,"id":"unique-request-id","op":"settings","enabled":true}
+{"v":1,"id":"unique-request-id","op":"check"}
+{"v":1,"id":"unique-request-id","op":"later","tag":"v1.3.0C"}
+{"v":1,"id":"unique-request-id","op":"skip","tag":"v1.3.0C"}
+{"v":1,"id":"unique-request-id","op":"install","tag":"v1.3.0C","confirmed":true}
+```
+
+Actions require a nonempty ID of at most 63 characters and are bounded to 512 bytes and queued off the MQTT event task. Retained and
+fragmented action messages are ignored. Installation requires the exact available
+tag and explicit confirmation; overlapping operations are rejected. The last eight action IDs are deduplicated, and the latest installation ID is
+persisted to prevent replay across reboot. Observe state acknowledgement instead of treating a
+broker publish acknowledgement as controller acceptance. No action accepts an
+arbitrary release URL. Existing manual MQTT `ota` URL updates remain separate.

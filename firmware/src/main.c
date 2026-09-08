@@ -17,6 +17,7 @@
 #include "relays.h"
 #include "webserver.h"
 #include "ota.h"
+#include "release_update.h"
 #include "button.h"
 #include "schedule.h"
 #include "health.h"
@@ -263,6 +264,7 @@ void app_main(void)
     wifi_init();
 
     // 4. Web config server (served on every active WiFi interface)
+    release_update_init();
     webserver_init();
 
     // 5. Time sync

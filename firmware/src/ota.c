@@ -2,6 +2,7 @@
 #include "esp_ota_ops.h"
 #include "esp_http_client.h"
 #include "esp_https_ota.h"
+#include "esp_crt_bundle.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
@@ -58,6 +59,7 @@ static void ota_task(void *arg)
     esp_http_client_config_t http_cfg = {
         .url = s_ota_url,
         .timeout_ms = 30000,
+        .crt_bundle_attach = esp_crt_bundle_attach,
     };
 
     esp_https_ota_config_t ota_cfg = {

@@ -4,6 +4,7 @@
 #include "schedule.h"
 #include "sensors.h"
 #include "ota.h"
+#include "release_update.h"
 #include "time_sync.h"
 #include "wifi.h"
 #include "esp_netif.h"
@@ -30,6 +31,7 @@ static char s_topic_control_relay[80];
 static char s_topic_config[80];
 static char s_topic_grow[80];
 static char s_topic_ota[80];
+static char s_topic_update_action[80], s_topic_update_state[80];
 static char s_topic_status[80];
 static char s_topic_network[80];
 static char s_topic_schedule_action[96];
@@ -60,6 +62,8 @@ static void build_topics(void)
     snprintf(s_topic_control_relay, sizeof(s_topic_control_relay), "growhub/%s/control/relay", mac);
     snprintf(s_topic_config,        sizeof(s_topic_config),        "growhub/%s/config", mac);
     snprintf(s_topic_grow,          sizeof(s_topic_grow),          "growhub/%s/grow", mac);
+    snprintf(s_topic_update_action, sizeof(s_topic_update_action), "growhub/%s/update/action", mac);
+    snprintf(s_topic_update_state, sizeof(s_topic_update_state), "growhub/%s/update/state", mac);
     snprintf(s_topic_ota,           sizeof(s_topic_ota),           "growhub/%s/ota", mac);
     snprintf(s_topic_status,        sizeof(s_topic_status),        "growhub/%s/status", mac);
     snprintf(s_topic_network,       sizeof(s_topic_network),       "growhub/%s/network/state", mac);
@@ -83,6 +87,7 @@ static void subscribe_all(void)
     esp_mqtt_client_subscribe(s_client, s_topic_schedule_action, 1);
     esp_mqtt_client_subscribe(s_client, s_topic_time_action, 1);
     esp_mqtt_client_subscribe(s_client, s_topic_outlets_config, 1);
+    esp_mqtt_client_subscribe(s_client, s_topic_update_action, 1);
     esp_mqtt_client_subscribe(s_client, s_topic_ota,           1);
     ESP_LOGI(TAG, "Subscribed to control/config/grow/schedule-action/time/outlets/ota topics");
 }
@@ -880,6 +885,9 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base,
             }
         } else if (strcmp(topic, s_topic_schedule_action) == 0) {
             handle_schedule_action(event->data, event->data_len);
+        } else if (strcmp(topic, s_topic_update_action) == 0) {
+            if (!event->retain && event->current_data_offset == 0 && event->data_len == event->total_data_len)
+                release_update_action(event->data, event->data_len);
         } else if (strcmp(topic, s_topic_ota) == 0) {
             handle_ota(event->data, event->data_len);
         }
@@ -947,6 +955,18 @@ void mqtt_poll_network_state(void)
     static uint32_t published_generation = 0;
     if (!s_network_lock || xSemaphoreTake(s_network_lock, 0) != pdTRUE) return;
     if (!s_client || !wifi_is_connected()) goto done;
+    static char *last_update = NULL;
+    static uint32_t update_generation = 0;
+    if (s_connected) {
+        char *json = release_update_json();
+        if (json && (!last_update || strcmp(last_update, json) || update_generation != s_network_generation)) {
+            if (esp_mqtt_client_enqueue(s_client, s_topic_update_state, json, 0, 1, 1, true) >= 0) {
+                free(last_update); last_update = json; json = NULL;
+                update_generation = s_network_generation;
+            }
+        }
+        free(json);
+    }
 
     esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
     esp_netif_ip_info_t info;

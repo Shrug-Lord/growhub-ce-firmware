@@ -711,6 +711,14 @@ contracts included in the frozen `1.1.0C` minor-release scope.
 
 ---
 
+## Optional release update controls (1.2.0C)
+
+Command Center 0.2.0 mirrors controller-owned `update/state` and sends explicit
+non-retained `update/action` requests. The local firmware page and device card
+share the check preference, release identity, and dismissal state. Older firmware
+without the optional topic remains usable, with release controls unavailable.
+See the [state/action contract](MQTT.md#release-update-state-and-actions-120c).
+
 ## OTA Update
 
 Command Center-triggered OTA is URL-based. The device must be able to route to
