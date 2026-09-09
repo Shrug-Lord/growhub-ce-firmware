@@ -1,6 +1,7 @@
 # Growhub CE v1.2.0C Development Notes
 
-Status: development version; release artifacts are not yet frozen or published.
+Status: release candidate; Linux CI artifact hashes are frozen but the release is
+not yet published.
 
 ## Automatic device management address
 
@@ -51,15 +52,16 @@ That hardware run used a development image still labeled `1.1.0C`; it is feature
 evidence, not validation of a frozen `v1.2.0C` release artifact. In-place DHCP lease
 replacement without a reconnect was not forced on hardware.
 
-Before a tagged release, retain the Linux CI candidate, validate that exact image
-on hardware, and freeze its hashes in `release-manifests/v1.2.0C.sha256`, following
-the [release process](RELEASES.md). The published `v1.1.0C` tag and artifact hashes
-remain immutable.
+The exact Linux CI candidate has passed OTA, interrupted-transfer, and boot-health
+rollback checks on the selected bench controller. Its hashes are frozen in
+`release-manifests/v1.2.0C.sha256`. The remaining destructive first-flash and
+physical-control checks are listed in the [release process](RELEASES.md). The
+published `v1.1.0C` tag and artifact hashes remain immutable.
 
 ## Current update verification and release status
 
-The 1.2.0C development update candidate was built, packaged, and installed on the
-selected bench device. Live GitHub discovery and bidirectional MQTT preference
+The 1.2.0C update candidate was built, packaged, and installed on the selected
+bench device. Live GitHub discovery and bidirectional MQTT preference
 synchronization passed. See [UPDATE-VERIFICATION.md](UPDATE-VERIFICATION.md) for
-exact binary evidence and remaining release gates. This is not yet a published
-or frozen release.
+exact Linux CI hashes, hardware evidence, and the remaining release gates. This
+release candidate is frozen but not yet published.
