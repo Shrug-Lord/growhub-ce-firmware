@@ -24,7 +24,7 @@ in `1.2.0C`; post-release fixes belong in `1.1.1C`.
 The current release-candidate firmware is `1.2.0C`, including the optional retained
 MQTT management-address report described in the
 [development release notes](RELEASE-NOTES-v1.2.0C.md). Its release artifacts have
-has frozen Linux CI artifact hashes but is not yet published. Both `GROWHUB_VERSION` in
+frozen Linux CI hashes but are not yet published. Both `GROWHUB_VERSION` in
 `firmware/platformio.ini` and `CONFIG_APP_PROJECT_VER` in
 `firmware/sdkconfig.growhub` must match the intended firmware version; building
 does not increment either value automatically.
@@ -137,9 +137,9 @@ Before writing, the first-flash script also dumps the device's current 4 MB flas
 - Confirm first boot exposes the `growhub_<last4mac>` WiFi AP.
 - Confirm web UI setup works at `http://192.168.4.1`.
 - Confirm `firmware.bin` works as a CE-to-CE web UI upload.
-- Complete the Command Center `CE-1.1.0C` hardware-contract checklist against
+- Complete the Command Center `CE-1.2.0C` hardware-contract checklist against
   the exact firmware commit and record its binary hash. The runnable checklist
-  is `docs/release-evidence/CE-1.1.0C.md` in the companion Command Center
+  is `docs/release-evidence/CE-1.2.0C.md` in the companion Command Center
   repository; its release validator requires every item to be checked and the
   evidence record to be marked `Status: passed`.
 - Confirm the front button, operation LED, malfunction LED, setup-AP preference,
