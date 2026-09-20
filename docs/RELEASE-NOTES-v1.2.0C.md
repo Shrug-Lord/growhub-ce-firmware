@@ -64,7 +64,7 @@ The final exact Linux CI candidate has passed OTA, interrupted-transfer,
 boot-health rollback, packaged first-flash, front-button, LED, setup-AP, relay,
 sensor, reboot-persistence, and HTTP socket-stress checks on a Growhub+ bench
 controller. Its hashes are frozen in `release-manifests/v1.2.0C.sha256`. Original
-Growhub hardware coverage and final draft review remain under the
+Growhub OTA parity coverage and final draft review remain under the
 [release process](RELEASES.md). The published `v1.1.0C` tag and artifact hashes
 remain immutable.
 

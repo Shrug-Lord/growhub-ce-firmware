@@ -1,8 +1,8 @@
 # Release update verification
 
 Status: implementation, exact Linux CI OTA validation, and the Growhub+ hardware
-release checklist are complete. Original Growhub hardware coverage and final
-draft-release review remain open.
+release checklist are complete. A safe OTA-only parity check on the original
+Growhub and final draft-release review remain open.
 
 ## Candidate
 
@@ -142,7 +142,11 @@ file upload, interrupted transfer, and boot-health rollback as described above.
 
 ## Remaining release gates
 
-- Repeat the physical first-flash, front-button, LED, relay, and recovery checks
-  on an original Growhub. The completed run covers one Growhub+; the release
-  process currently requires both hardware families.
+- On the original Growhub, perform an OTA-only parity check that preserves the
+  device's `op_led_en=0` software fuse for its known blue-LED/GPIO 12 hardware
+  fault. Verify the override before and after OTA, capture the high-impedance boot
+  log, and confirm sensor, Wi-Fi, MQTT, SNTP, front-button recovery AP, retained
+  outlet state, and HTTP concurrency. Do not first-flash, factory-reset, drive
+  GPIO 12, or switch its live outlets for this release check; unchanged relay and
+  LED behavior inherits the completed CE `1.1.0C` original-Growhub evidence.
 - Review the draft release and its generated assets before publishing.
