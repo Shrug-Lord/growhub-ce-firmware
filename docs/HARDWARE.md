@@ -110,9 +110,12 @@ red malfunction LED on GPIO 14 remains available.
 CE-to-CE OTA preserves this NVS setting. A factory reset or full UART first-flash
 erases it and restores the default enabled state, so neither operation is a safe
 release test on this particular unit. Before and after any OTA validation on the
-unit, confirm the diagnostics page shows the operation LED disabled and confirm
-the serial boot log reports `Operation LED disabled; GPIO 12 is high-impedance`.
-Do not re-enable the output to test the blue LED.
+unit, confirm the diagnostics page shows the operation LED disabled. When a
+serial connection is already safely available, also capture the boot message
+`Operation LED disabled; GPIO 12 is high-impedance`. Do not attach UART solely to
+collect that transient message from an installed controller carrying live loads;
+record the missing capture and rely on the preserved override, exact-image source
+path, and post-boot operation. Do not re-enable the output to test the blue LED.
 
 ## Planned device diagnostics (`v1.2.0C`)
 

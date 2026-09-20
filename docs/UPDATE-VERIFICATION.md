@@ -1,8 +1,8 @@
 # Release update verification
 
-Status: implementation, exact Linux CI OTA validation, and the Growhub+ hardware
-release checklist are complete. A safe OTA-only parity check on the original
-Growhub and final draft-release review remain open.
+Status: implementation, exact Linux CI OTA validation, and the Growhub+ and
+original-Growhub hardware release checks are complete. Final draft-release
+review remains open.
 
 ## Candidate
 
@@ -43,6 +43,20 @@ Growhub and final draft-release review remain open.
   individually while disconnected from mains loads and matched relay masks
   8, 1, 2, and 4. The setup-AP preference, front-button recovery AP, factory reset,
   operation LED, blocking time-warning LED, and sensor-disconnect behavior passed.
+- The project's original Growhub was updated OTA from `1.1.0C` to the exact Linux
+  CI `1.2.0C` image while controlling live loads. Its device identity, automatic
+  schedule, sensor reporting, Wi-Fi, MQTT, SNTP, and expected outlet states were
+  preserved across reboot. The `op_led_en=0` hardware override showed Disabled /
+  high-impedance before and after OTA. The new retained network-state message
+  advertised its reserved address. Physical-button recovery enabled the setup AP
+  alongside the station connection and a second medium hold disabled it; MQTT,
+  sensors, schedule execution, and live outlet states continued throughout.
+  No outlet was manually switched, GPIO 12 was not driven, and neither factory
+  reset nor first-flash was performed. No USB serial connection was installed on
+  the live controller, so the transient high-impedance boot message was not
+  captured. Attaching UART solely for that message would add physical and reboot
+  risk; the release evidence instead records the exact-image source path, the
+  disabled override before and after OTA, and successful post-boot operation.
 - Multiple management pages originally exhausted the ESP32's ten lwIP sockets and
   produced `httpd_accept_conn` error 23. Limiting HTTP clients to four and enabling
   idle-session eviction preserves capacity for MQTT, DNS, and OTA. Six browser
@@ -139,14 +153,16 @@ file upload, interrupted transfer, and boot-health rollback as described above.
 - The first backup-sidecar verification command ran outside the backup directory,
   so its relative filename could not be opened. Running the checksum from the
   sidecar's directory passed, and the backup size was exactly 4,194,304 bytes.
+- The first original-Growhub HTTP repetition script assigned to zsh's special
+  lowercase `path` array, which removed `curl` from command lookup; it sent no
+  requests. Renaming the variable produced 48/48 successful sequential requests.
+- The first true 48-client original-Growhub concurrency wave used a three-second
+  connection timeout and completed 43/48 requests. The controller remained
+  healthy. Repeating the same simultaneous-client test with a ten-second connect
+  window completed 48/48, followed by a healthy status response with the expected
+  live outlet states. This is consistent with bounded accept-backlog delay rather
+  than socket exhaustion or a wedged listener.
 
-## Remaining release gates
+## Remaining release gate
 
-- On the original Growhub, perform an OTA-only parity check that preserves the
-  device's `op_led_en=0` software fuse for its known blue-LED/GPIO 12 hardware
-  fault. Verify the override before and after OTA, capture the high-impedance boot
-  log, and confirm sensor, Wi-Fi, MQTT, SNTP, front-button recovery AP, retained
-  outlet state, and HTTP concurrency. Do not first-flash, factory-reset, drive
-  GPIO 12, or switch its live outlets for this release check; unchanged relay and
-  LED behavior inherits the completed CE `1.1.0C` original-Growhub evidence.
 - Review the draft release and its generated assets before publishing.
