@@ -142,6 +142,10 @@ Before writing, the first-flash script also dumps the device's current 4 MB flas
   is `docs/release-evidence/CE-1.2.0C.md` in the companion Command Center
   repository; its release validator requires every item to be checked and the
   evidence record to be marked `Status: passed`.
-- Confirm the front button, operation LED, malfunction LED, setup-AP preference,
-  and recovery override on both Growhub and Growhub+ hardware.
+- Confirm hardware-specific behavior on both Growhub and Growhub+ or explicitly
+  inherit unchanged paths from completed evidence for the same unit. Confirm the
+  operation LED where the output is safe; for a documented per-device LED-circuit
+  fault, verify the persistent hardware override remains disabled across OTA
+  instead of driving the faulty output. Never erase a required hardware override
+  solely to repeat a release check.
 - Review draft release notes before publishing.

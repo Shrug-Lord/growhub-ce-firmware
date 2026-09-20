@@ -63,10 +63,12 @@ replacement without a reconnect was not forced on hardware.
 The final exact Linux CI candidate has passed OTA, interrupted-transfer,
 boot-health rollback, packaged first-flash, front-button, LED, setup-AP, relay,
 sensor, reboot-persistence, and HTTP socket-stress checks on a Growhub+ bench
-controller. Its hashes are frozen in `release-manifests/v1.2.0C.sha256`. Original
-Growhub hardware coverage and final draft review remain under the
-[release process](RELEASES.md). The published `v1.1.0C` tag and artifact hashes
-remain immutable.
+controller. The same exact image passed an OTA-only parity run on the original
+Growhub while preserving its disabled/high-impedance operation-LED override,
+identity, schedule, sensor reporting, connectivity, and live outlet states. Its
+hashes are frozen in `release-manifests/v1.2.0C.sha256`. Final draft review remains
+under the [release process](RELEASES.md). The published `v1.1.0C` tag and artifact
+hashes remain immutable.
 
 ## Current update verification and release status
 

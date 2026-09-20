@@ -98,6 +98,25 @@ Growhub v1 bench discovery confirmed GPIO 12 and GPIO 14 are active-low. The
 Growhub+ uses the same operation/malfunction LED roles; its operation LED is
 green rather than blue.
 
+### Original Growhub bench-unit operation-LED fault
+
+The project's only original Growhub bench unit developed a hardware fault in
+the blue operation-LED/GPIO 12 circuit. Driving that output interfered with
+normal controller operation. Its persistent **Actions → Hardware override** is
+therefore disabled (`op_led_en=0` in NVS), which acts as a per-device software
+fuse: firmware leaves GPIO 12 as a high-impedance input and never writes it. The
+red malfunction LED on GPIO 14 remains available.
+
+CE-to-CE OTA preserves this NVS setting. A factory reset or full UART first-flash
+erases it and restores the default enabled state, so neither operation is a safe
+release test on this particular unit. Before and after any OTA validation on the
+unit, confirm the diagnostics page shows the operation LED disabled. When a
+serial connection is already safely available, also capture the boot message
+`Operation LED disabled; GPIO 12 is high-impedance`. Do not attach UART solely to
+collect that transient message from an installed controller carrying live loads;
+record the missing capture and rely on the preserved override, exact-image source
+path, and post-boot operation. Do not re-enable the output to test the blue LED.
+
 ## Planned device diagnostics (`v1.2.0C`)
 
 The planned local diagnostics surface reports device, connectivity, time,

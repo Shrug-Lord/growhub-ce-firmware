@@ -1,8 +1,8 @@
 # Release update verification
 
-Status: implementation, exact Linux CI OTA validation, and the Growhub+ hardware
-release checklist are complete. Original Growhub hardware coverage and final
-draft-release review remain open.
+Status: implementation, exact Linux CI OTA validation, Growhub+ and
+original-Growhub hardware release checks, and final draft-release review are
+complete.
 
 ## Candidate
 
@@ -43,6 +43,20 @@ draft-release review remain open.
   individually while disconnected from mains loads and matched relay masks
   8, 1, 2, and 4. The setup-AP preference, front-button recovery AP, factory reset,
   operation LED, blocking time-warning LED, and sensor-disconnect behavior passed.
+- The project's original Growhub was updated OTA from `1.1.0C` to the exact Linux
+  CI `1.2.0C` image while controlling live loads. Its device identity, automatic
+  schedule, sensor reporting, Wi-Fi, MQTT, SNTP, and expected outlet states were
+  preserved across reboot. The `op_led_en=0` hardware override showed Disabled /
+  high-impedance before and after OTA. The new retained network-state message
+  advertised its reserved address. Physical-button recovery enabled the setup AP
+  alongside the station connection and a second medium hold disabled it; MQTT,
+  sensors, schedule execution, and live outlet states continued throughout.
+  No outlet was manually switched, GPIO 12 was not driven, and neither factory
+  reset nor first-flash was performed. No USB serial connection was installed on
+  the live controller, so the transient high-impedance boot message was not
+  captured. Attaching UART solely for that message would add physical and reboot
+  risk; the release evidence instead records the exact-image source path, the
+  disabled override before and after OTA, and successful post-boot operation.
 - Multiple management pages originally exhausted the ESP32's ten lwIP sockets and
   produced `httpd_accept_conn` error 23. Limiting HTTP clients to four and enabling
   idle-session eviction preserves capacity for MQTT, DNS, and OTA. Six browser
@@ -70,6 +84,11 @@ draft-release review remain open.
 - The actual standalone controller page renders its release controls, with checks
   off, and its Check now button performs release discovery.
 - Existing browser smoke/accessibility checks pass with the final client build.
+- The unpublished draft's seven assets were downloaded independently. Every
+  binary matched its attached `SHA256SUMS` entry and the frozen hashes above; the
+  first-flash ZIP passed a complete archive integrity check. Draft notes include
+  the completed original-Growhub OTA result and retain the safety warning for its
+  disabled/high-impedance operation-LED override.
 
 ## Commands
 
@@ -139,10 +158,17 @@ file upload, interrupted transfer, and boot-health rollback as described above.
 - The first backup-sidecar verification command ran outside the backup directory,
   so its relative filename could not be opened. Running the checksum from the
   sidecar's directory passed, and the backup size was exactly 4,194,304 bytes.
+- The first original-Growhub HTTP repetition script assigned to zsh's special
+  lowercase `path` array, which removed `curl` from command lookup; it sent no
+  requests. Renaming the variable produced 48/48 successful sequential requests.
+- The first true 48-client original-Growhub concurrency wave used a three-second
+  connection timeout and completed 43/48 requests. The controller remained
+  healthy. Repeating the same simultaneous-client test with a ten-second connect
+  window completed 48/48, followed by a healthy status response with the expected
+  live outlet states. This is consistent with bounded accept-backlog delay rather
+  than socket exhaustion or a wedged listener.
 
-## Remaining release gates
+## Release readiness
 
-- Repeat the physical first-flash, front-button, LED, relay, and recovery checks
-  on an original Growhub. The completed run covers one Growhub+; the release
-  process currently requires both hardware families.
-- Review the draft release and its generated assets before publishing.
+- No implementation or validation gates remain. Merge the documentation PR,
+  retarget the draft to that merge commit, and publish only after approval.
