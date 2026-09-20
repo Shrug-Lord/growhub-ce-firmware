@@ -1,8 +1,8 @@
 # Release update verification
 
-Status: implementation, exact Linux CI OTA validation, and the Growhub+ and
-original-Growhub hardware release checks are complete. Final draft-release
-review remains open.
+Status: implementation, exact Linux CI OTA validation, Growhub+ and
+original-Growhub hardware release checks, and final draft-release review are
+complete.
 
 ## Candidate
 
@@ -84,6 +84,11 @@ review remains open.
 - The actual standalone controller page renders its release controls, with checks
   off, and its Check now button performs release discovery.
 - Existing browser smoke/accessibility checks pass with the final client build.
+- The unpublished draft's seven assets were downloaded independently. Every
+  binary matched its attached `SHA256SUMS` entry and the frozen hashes above; the
+  first-flash ZIP passed a complete archive integrity check. Draft notes include
+  the completed original-Growhub OTA result and retain the safety warning for its
+  disabled/high-impedance operation-LED override.
 
 ## Commands
 
@@ -163,6 +168,7 @@ file upload, interrupted transfer, and boot-health rollback as described above.
   live outlet states. This is consistent with bounded accept-backlog delay rather
   than socket exhaustion or a wedged listener.
 
-## Remaining release gate
+## Release readiness
 
-- Review the draft release and its generated assets before publishing.
+- No implementation or validation gates remain. Merge the documentation PR,
+  retarget the draft to that merge commit, and publish only after approval.
