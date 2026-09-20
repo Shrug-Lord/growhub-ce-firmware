@@ -1,7 +1,7 @@
-# Growhub CE v1.2.0C Development Notes
+# Growhub CE v1.2.0C Release Notes
 
-Status: release candidate; Linux CI artifact hashes are frozen but the release is
-not yet published.
+Status: release candidate; final Linux CI artifact hashes and Growhub+ hardware
+evidence are frozen, but the release is not yet published.
 
 ## Automatic device management address
 
@@ -30,6 +30,14 @@ and Command Center 0.2.0 device cards. Checking defaults off; installation is ne
 unattended. Official downloads verify HTTPS, SHA-256, image size, and embedded
 version before changing the boot partition. See [OTA reference](OTA.md).
 
+## Management-page reliability
+
+The embedded HTTP server now limits browser clients to four and evicts an idle
+session when necessary. This leaves sockets available for MQTT, DNS, and OTA on
+the ESP32 and prevents several open or abandoned management pages from wedging
+new HTTP connections. Hardware verification covered six browser sessions and 48
+concurrent status requests while MQTT and sensor reporting remained healthy.
+
 ## Compatibility
 
 - Existing CE 1.1.0C topics, schedules, and control behavior remain supported.
@@ -52,11 +60,13 @@ That hardware run used a development image still labeled `1.1.0C`; it is feature
 evidence, not validation of a frozen `v1.2.0C` release artifact. In-place DHCP lease
 replacement without a reconnect was not forced on hardware.
 
-The exact Linux CI candidate has passed OTA, interrupted-transfer, and boot-health
-rollback checks on the selected bench controller. Its hashes are frozen in
-`release-manifests/v1.2.0C.sha256`. The remaining destructive first-flash and
-physical-control checks are listed in the [release process](RELEASES.md). The
-published `v1.1.0C` tag and artifact hashes remain immutable.
+The final exact Linux CI candidate has passed OTA, interrupted-transfer,
+boot-health rollback, packaged first-flash, front-button, LED, setup-AP, relay,
+sensor, reboot-persistence, and HTTP socket-stress checks on a Growhub+ bench
+controller. Its hashes are frozen in `release-manifests/v1.2.0C.sha256`. Original
+Growhub hardware coverage and final draft review remain under the
+[release process](RELEASES.md). The published `v1.1.0C` tag and artifact hashes
+remain immutable.
 
 ## Current update verification and release status
 

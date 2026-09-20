@@ -1,18 +1,21 @@
 # Release update verification
 
-Status: implementation and exact Linux CI OTA validation complete; destructive
-first-flash release checks remain open.
+Status: implementation, exact Linux CI OTA validation, and the Growhub+ hardware
+release checklist are complete. Original Growhub hardware coverage and final
+draft-release review remain open.
 
 ## Candidate
 
 - CE development version: `1.2.0C` (both application version fields).
 - Companion development version: `0.2.0` (root/server packages and lockfiles).
-- Candidate commit: `5fad38eff1400add60a7e6ec7a37ec090ad48daf`.
+- Firmware fix commit: `3322e9490bf6f4dfdb3f26eaadee0d4ef78aa870`.
 - Exact Linux CI firmware SHA-256:
-  `6237d69d0d872335374fe2accdf71a0eca611b2db8da151ba3a3bdff1d43e510`.
+  `302eaaea9fdea5d85dca0a15461be80d7c8f33026aadf066a288963ca6aa49b8`.
 - Exact Linux CI first-flash ZIP SHA-256:
-  `45c7d2873eed38b9abc79d02b3a0e1e43812c59120a5378478ad83b9c927fd2f`.
-- CI run: `https://github.com/Shrug-Lord/growhub-ce-firmware/actions/runs/34256340407`.
+  `9f002c6bf5c01f9a83a23373402110c0aa8fbbdd940371bb423fba2f6eb7eeb4`.
+- Exact Linux CI merged-image SHA-256:
+  `a6979fb25362b1e8a03ff1f8372732c51cf826ce2d3ed10406a938582036784b`.
+- CI run: `https://github.com/Shrug-Lord/growhub-ce-firmware/actions/runs/35537888732`.
 - The tested hashes are frozen in `release-manifests/v1.2.0C.sha256`.
 
 ## Verification mapped to the plan
@@ -23,10 +26,29 @@ first-flash release checks remain open.
   leading-zero, and large-number cases.
 - A selected bench controller boots `1.2.0C` after CE-to-CE file upload, preserving
   identity, outlet state, Wi-Fi/MQTT connectivity, and valid time.
-- The exact retained Linux CI image passed that same OTA/reboot check. A deliberately
+- The final exact Linux CI image passed that same OTA/reboot check, booted from an
+  OTA partition, and was marked valid by the health gate. A deliberately
   interrupted upload aborted without reboot or boot-slot change. An isolated test
-  image with a forced health-gate failure booted, was rejected, and rolled back to
-  the exact CI image. Test-only source and binaries remained outside the repository.
+  image with a forced health-gate failure booted, was rejected, and rolled back.
+  Test-only source and binaries remained outside the repository.
+- The final exact Linux CI first-flash ZIP passed checksum and archive checks and
+  was installed with its included script on a Growhub+ bench controller. The
+  installer identified the expected ESP32, created a checksummed 4 MiB backup,
+  wrote the merged image at offset `0x0`, and verified the flash hash. Fresh boot
+  exposed the setup AP; setup completed at `192.168.4.1`; a captured reboot loaded
+  `1.2.0C` from the factory partition at `0x20000` with ELF SHA-256 prefix
+  `df7ddf935`.
+- On that exact first-flash image, Wi-Fi, MQTT, SNTP, sensor reads, AUTO mode, and
+  all-off relay state survived reboot. The four physical outlets were exercised
+  individually while disconnected from mains loads and matched relay masks
+  8, 1, 2, and 4. The setup-AP preference, front-button recovery AP, factory reset,
+  operation LED, blocking time-warning LED, and sensor-disconnect behavior passed.
+- Multiple management pages originally exhausted the ESP32's ten lwIP sockets and
+  produced `httpd_accept_conn` error 23. Limiting HTTP clients to four and enabling
+  idle-session eviction preserves capacity for MQTT, DNS, and OTA. Six browser
+  sessions plus 48 concurrent `/status` requests passed on hardware while MQTT and
+  sensor reporting stayed healthy; the same 48-request check passed again on the
+  exact Linux CI OTA and first-flash installations.
 - Real GitHub release discovery reads the published `v1.1.0C` asset and digest,
   correctly offering no downgrade from `1.2.0C`.
 - An isolated instance of the actual Command Center MQTT mirror reads retained
@@ -106,11 +128,21 @@ file upload, interrupted transfer, and boot-health rollback as described above.
   transmit buffer. Verified this limit in the pinned SDK and increased the
   official HTTP client's transmit buffer to 2048 bytes, matching the bounded
   redirect URL handling. This affects only the official release updater.
+- Repeated management-page sessions exhausted all available lwIP sockets and made
+  the HTTP listener reject every new connection with error 23. The server now
+  reserves socket headroom and evicts the least-recently-used idle HTTP session;
+  the hardware stress checks above verify the correction.
+- A macOS release build was intentionally compared with the earlier Linux CI
+  candidate and produced different bytes. No local hash was promoted. The final
+  manifest instead records the downloaded Linux CI artifacts that were installed
+  and verified on hardware.
+- The first backup-sidecar verification command ran outside the backup directory,
+  so its relative filename could not be opened. Running the checksum from the
+  sidecar's directory passed, and the backup size was exactly 4,194,304 bytes.
 
 ## Remaining release gates
 
-- Complete the exact first-flash ZIP, stock-backup, setup-AP, front-button, LED,
-  and recovery checks in `RELEASES.md` on appropriate Growhub and Growhub+
-  hardware. These reset or directly manipulate hardware and were not folded into
-  the OTA validation above.
+- Repeat the physical first-flash, front-button, LED, relay, and recovery checks
+  on an original Growhub. The completed run covers one Growhub+; the release
+  process currently requires both hardware families.
 - Review the draft release and its generated assets before publishing.
