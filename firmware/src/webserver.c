@@ -2054,6 +2054,10 @@ void webserver_init(void)
     http_cfg.uri_match_fn = httpd_uri_match_wildcard;
     http_cfg.max_uri_handlers = 12;
     http_cfg.stack_size = 8192;
+    // ESP32 has 10 lwIP sockets total. Keep headroom for MQTT, DNS, and OTA,
+    // and evict an idle browser session instead of wedging the HTTP listener.
+    http_cfg.max_open_sockets = 4;
+    http_cfg.lru_purge_enable = true;
 
     httpd_handle_t server = NULL;
     if (httpd_start(&server, &http_cfg) != ESP_OK) {
