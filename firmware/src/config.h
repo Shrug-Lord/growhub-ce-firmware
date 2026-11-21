@@ -94,6 +94,9 @@ typedef struct {
     // Relay mode persisted across reboots (0=AUTO, 1=MANUAL)
     uint8_t  relay_mode;
 
+    // Manual ownership mask in relay-bit order (O1=bit3, O2=bit0, etc.).
+    uint8_t  relay_manual_mask;
+
     // Local web UI schedule pause mask. bit0=Outlet1 ... bit3=Outlet4.
     uint8_t  schedule_disabled_mask;
 } growhub_config_t;
@@ -125,7 +128,7 @@ void config_clear_schedule(void);
 void config_save_schedule_disabled_mask(uint8_t mask);
 void config_save_calibration(float temp_off, float rh_off);
 void config_save_mqtt_disabled(bool disabled);
-void config_save_relay_mode(uint8_t mode);  // 0=AUTO, 1=MANUAL
+void config_save_relay_manual_mask(uint8_t mask);
 
 // Factory reset — erase all NVS data and reboot
 void config_factory_reset(void);

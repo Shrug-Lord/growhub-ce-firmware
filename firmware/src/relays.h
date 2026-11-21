@@ -19,13 +19,23 @@ typedef enum {
 // Initialize relay GPIO pins
 void relays_init(void);
 
-// Set mode (manual allows direct control, auto defers to schedule)
+// Bulk mode controls all four outlets. Mixed ownership reports AUTO here for
+// legacy clients; consult the per-outlet modes for authoritative ownership.
 void relays_set_mode(relay_mode_t mode);
 relay_mode_t relays_get_mode(void);
 
-// Set relay state from bitmask (manual mode only)
+// Set relay state from bitmask; rejected unless all outlets are MANUAL.
 // bit0=Outlet2, bit1=Outlet3, bit2=Outlet4, bit3=Outlet1
-void relays_set_bitmask(uint8_t mask);
+bool relays_set_bitmask(uint8_t mask);
+
+// Physical outlet IDs are 1..4. Invalid IDs/actions are rejected.
+bool relays_set_outlet_mode(int outlet_id, relay_mode_t mode);
+relay_mode_t relays_get_outlet_mode(int outlet_id);
+bool relays_set_outlet(int outlet_id, bool on);
+uint8_t relays_get_manual_mask(void);
+
+// Schedule writes merge only AUTO-owned bits atomically, preserving manual bits.
+bool relays_set_auto_bitmask(uint8_t mask);
 
 // Get current relay bitmask
 uint8_t relays_get_bitmask(void);

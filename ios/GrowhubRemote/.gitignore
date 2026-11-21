@@ -1,0 +1,12 @@
+.build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+Release/*.xcresult/
+Release/archive/
+Release/package/
+DerivedData*/
+Release/package*/
+Release/upload/
+Scripts/__pycache__/

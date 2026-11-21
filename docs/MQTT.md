@@ -915,3 +915,48 @@ tag and explicit confirmation; overlapping operations are rejected. The last eig
 persisted to prevent replay across reboot. Observe state acknowledgement instead of treating a
 broker publish acknowledgement as controller acceptance. No action accepts an
 arbitrary release URL. Existing manual MQTT `ota` URL updates remain separate.
+
+## Proposed per-outlet ownership extension
+
+See [ADR 0005](adr/0005-per-outlet-control-modes.md). These additions do not change
+schedule v3 or the existing bulk control commands.
+
+Publish to `growhub/<MAC>/control/outlet` (QoS 1, retained **false**):
+
+```json
+{"outlet":1,"mode":"manual"}
+```
+
+Then control that outlet independently:
+
+```json
+{"outlet":1,"state":"on"}
+```
+
+Return it to its saved schedule:
+
+```json
+{"outlet":1,"mode":"auto"}
+```
+
+`outlet` is a physical integer ID 1–4. Exactly one of `mode` (`auto`/`manual`)
+or `state` (`on`/`off`) is required. Mode changes preserve the saved schedule.
+State writes require MANUAL ownership of the target outlet. Rejections appear on
+`control/error` with `command: "control/outlet"` and reason `invalid_payload`,
+`invalid_mode`, or `manual_mode_required`; no output is changed on rejection.
+Successful commands publish authoritative `schedule/state` immediately.
+
+Both `schedule/state` and HTTP `/status` add `outlet_status[].mode` and a numeric
+`manual_mask` in relay-bit order: bit3=Outlet1, bit0=Outlet2, bit1=Outlet3,
+bit2=Outlet4. This differs from the physical-ID order of `sched_dis`. A mixed
+controller retains legacy top-level `mode: "auto"`; clients must inspect each
+outlet's mode. Existing `control/mode` commands still affect all four outlets,
+and `control/relay` requires all four to be MANUAL. `pump_run_now` requires only
+the selected pump outlet to be AUTO. Manual outlets are excluded from automation
+warning outlet lists. These features require the proposed firmware; older CE
+versions do not subscribe to `control/outlet`.
+
+The new persisted NVS key `relay_manual` stores this ownership mask. If absent,
+all outlet modes migrate from `relay_mode`. Manual output states remain volatile
+and start OFF after reboot. A firmware downgrade restores device-wide MANUAL if
+any manual ownership had been saved.

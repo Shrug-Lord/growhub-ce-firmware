@@ -93,6 +93,19 @@ main() {
 
   build_firmware="$BUILD_DIR/firmware.bin"
   require_file "$build_firmware"
+  python3 - "$build_firmware" "${version#v}" <<'PYVERSION'
+import sys
+from pathlib import Path
+image = Path(sys.argv[1]).read_bytes()
+if len(image) < 256 or len(image) > 0x12C000 or image[0] != 0xE9:
+    raise SystemExit("Firmware is not an ESP app image that fits the OTA partition")
+if image[32:36] != bytes([0x32, 0x54, 0xCD, 0xAB]):
+    raise SystemExit("Firmware application descriptor is missing")
+embedded = image[48:80].split(b"\0", 1)[0].decode("utf-8")
+if embedded != sys.argv[2]:
+    raise SystemExit(f"Embedded firmware version {embedded!r} does not match package {sys.argv[2]!r}; check sdkconfig and GROWHUB_VERSION")
+print(f"Verified embedded version {embedded} and OTA image size {len(image)} bytes")
+PYVERSION
 
   package_core_dir="${PLATFORMIO_CORE_DIR:-}"
   if [ -z "$package_core_dir" ] && [ -n "${HOME:-}" ]; then

@@ -28,6 +28,7 @@ static volatile uint32_t s_network_generation = 0;
 static char s_topic_sensor[80];
 static char s_topic_control_mode[80];
 static char s_topic_control_relay[80];
+static char s_topic_control_outlet[80];
 static char s_topic_config[80];
 static char s_topic_grow[80];
 static char s_topic_ota[80];
@@ -60,6 +61,7 @@ static void build_topics(void)
     snprintf(s_topic_sensor,        sizeof(s_topic_sensor),        "growhub/%s/sensor/live", mac);
     snprintf(s_topic_control_mode,  sizeof(s_topic_control_mode),  "growhub/%s/control/mode", mac);
     snprintf(s_topic_control_relay, sizeof(s_topic_control_relay), "growhub/%s/control/relay", mac);
+    snprintf(s_topic_control_outlet, sizeof(s_topic_control_outlet), "growhub/%s/control/outlet", mac);
     snprintf(s_topic_config,        sizeof(s_topic_config),        "growhub/%s/config", mac);
     snprintf(s_topic_grow,          sizeof(s_topic_grow),          "growhub/%s/grow", mac);
     snprintf(s_topic_update_action, sizeof(s_topic_update_action), "growhub/%s/update/action", mac);
@@ -82,6 +84,7 @@ static void subscribe_all(void)
 {
     esp_mqtt_client_subscribe(s_client, s_topic_control_mode,  1);
     esp_mqtt_client_subscribe(s_client, s_topic_control_relay, 1);
+    esp_mqtt_client_subscribe(s_client, s_topic_control_outlet, 1);
     esp_mqtt_client_subscribe(s_client, s_topic_config,        1);
     esp_mqtt_client_subscribe(s_client, s_topic_grow,          1);
     esp_mqtt_client_subscribe(s_client, s_topic_schedule_action, 1);
@@ -588,6 +591,7 @@ static void handle_control_mode(const char *data, int len)
     switch (cmd) {
     case '2':
         relays_set_mode(RELAY_MODE_MANUAL);
+        schedule_evaluate_now();
         mqtt_publish_schedule_state("mqtt");
         ESP_LOGI(TAG, "Control: enter manual mode");
         break;
@@ -598,8 +602,8 @@ static void handle_control_mode(const char *data, int len)
         ESP_LOGI(TAG, "Control: return to auto mode");
         break;
     case '7':
-        relays_set_mode(RELAY_MODE_MANUAL);
         relays_all_off();
+        schedule_evaluate_now();
         mqtt_publish_schedule_state("mqtt");
         ESP_LOGI(TAG, "Control: all relays off");
         break;
@@ -621,15 +625,49 @@ static void handle_control_relay(const char *data, int len)
         publish_control_error("control/relay", "invalid_relay_mask");
         return;
     }
-    if (relays_get_mode() != RELAY_MODE_MANUAL) {
+    if (!relays_set_bitmask((uint8_t)mask)) {
         publish_control_error("control/relay", "manual_mode_required");
         ESP_LOGW(TAG, "Relay bitmask rejected in AUTO mode");
         return;
     }
 
-    relays_set_bitmask((uint8_t)mask);
     mqtt_publish_schedule_state("mqtt");
     ESP_LOGI(TAG, "Relay bitmask: %d", mask);
+}
+
+// Additive targeted control. Exactly one of mode/state is required.
+static void handle_control_outlet(const char *data, int len)
+{
+    cJSON *root = cJSON_ParseWithLength(data, len);
+    cJSON *id = cJSON_GetObjectItemCaseSensitive(root, "outlet");
+    cJSON *mode = cJSON_GetObjectItemCaseSensitive(root, "mode");
+    cJSON *state = cJSON_GetObjectItemCaseSensitive(root, "state");
+    const char *error = NULL;
+    if (!cJSON_IsObject(root) || !cJSON_IsNumber(id) ||
+        id->valuedouble != id->valueint || id->valueint < 1 || id->valueint > 4 ||
+        (!!mode == !!state)) {
+        error = "invalid_payload";
+    } else if (mode) {
+        if (!cJSON_IsString(mode) ||
+            (strcmp(mode->valuestring, "auto") && strcmp(mode->valuestring, "manual"))) {
+            error = "invalid_mode";
+        } else {
+            relays_set_outlet_mode(id->valueint, !strcmp(mode->valuestring, "manual")
+                ? RELAY_MODE_MANUAL : RELAY_MODE_AUTO);
+        }
+    } else if (!cJSON_IsString(state) ||
+               (strcmp(state->valuestring, "on") && strcmp(state->valuestring, "off"))) {
+        error = "invalid_payload";
+    } else if (!relays_set_outlet(id->valueint, !strcmp(state->valuestring, "on"))) {
+        error = "manual_mode_required";
+    }
+    cJSON_Delete(root);
+    if (error) {
+        publish_control_error("control/outlet", error);
+        return;
+    }
+    schedule_evaluate_now();
+    mqtt_publish_schedule_state("mqtt");
 }
 
 static void handle_config(const char *data, int len)
@@ -794,7 +832,7 @@ static void handle_schedule_action(const char *data, int len)
     int outlet_id = outlet_item->valueint;
     cJSON_Delete(root);
 
-    if (relays_get_mode() != RELAY_MODE_AUTO) {
+    if (relays_get_outlet_mode(outlet_id) != RELAY_MODE_AUTO) {
         mqtt_publish_schedule_error("auto_mode_required", outlet_id, NULL);
         return;
     }
@@ -855,6 +893,8 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base,
             handle_control_mode(event->data, event->data_len);
         } else if (strcmp(topic, s_topic_control_relay) == 0) {
             handle_control_relay(event->data, event->data_len);
+        } else if (strcmp(topic, s_topic_control_outlet) == 0) {
+            handle_control_outlet(event->data, event->data_len);
         } else if (strcmp(topic, s_topic_config) == 0) {
             handle_config(event->data, event->data_len);
         } else if (strcmp(topic, s_topic_outlets_config) == 0) {
@@ -1058,7 +1098,8 @@ void mqtt_publish_schedule_state(const char *source)
 
     if (active && auto_mode) {
         for (int i = 0; i < outlet_count; i++) {
-            if (outlet_schedule_disabled(outlets[i].id)) continue;
+            if (outlet_schedule_disabled(outlets[i].id) ||
+                relays_get_outlet_mode(outlets[i].id) != RELAY_MODE_AUTO) continue;
             if (outlet_has_condition(&outlets[i], condition_uses_wall_clock)) {
                 time_outlets[time_outlet_count++] = outlets[i].id;
             }
@@ -1088,6 +1129,7 @@ void mqtt_publish_schedule_state(const char *source)
 
     cJSON_AddBoolToObject(root, "active", active);
     cJSON_AddStringToObject(root, "mode", mode);
+    cJSON_AddNumberToObject(root, "manual_mask", relays_get_manual_mask());
     cJSON_AddStringToObject(root, "source", src);
     cJSON_AddBoolToObject(root, "time_valid", time_valid);
     cJSON_AddStringToObject(root, "time_source", time_sync_source_str());
@@ -1154,6 +1196,8 @@ void mqtt_publish_schedule_state(const char *source)
         int bit = relay_bit_for_outlet(id);
         bool on = bit >= 0 && ((relay_mask >> bit) & 1);
         cJSON_AddNumberToObject(item, "id", id);
+        cJSON_AddStringToObject(item, "mode",
+            relays_get_outlet_mode(id) == RELAY_MODE_MANUAL ? "manual" : "auto");
         cJSON_AddStringToObject(item, "state", on ? "on" : "off");
         cJSON_AddStringToObject(item, "summary", schedule_get_outlet_summary(id));
         cJSON_AddItemToArray(outlet_status, item);

@@ -123,3 +123,16 @@ scripts/restore-stock.sh
 ```
 
 The device must be in ESP32 download mode.
+
+## Host outlet-control regression tests
+
+After PlatformIO has installed ESP-IDF, run:
+
+```bash
+scripts/test-outlet-control.sh
+```
+
+This builds the real relay/schedule C code with host hardware substitutes and
+AddressSanitizer/UBSan. A C compiler and pthreads are required. Set `CJSON_DIR`
+if cJSON is not under the default PlatformIO ESP-IDF package directory. These
+checks are also run in PR CI; physical bench validation remains necessary.

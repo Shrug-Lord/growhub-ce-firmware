@@ -5,6 +5,9 @@
 **Supersedes:** N/A
 **Related:** ADR-0001 (GitHub Releases as canonical hosting), ADR-0002 (OTA rollback), ADR-0003 (UART-required first flash)
 
+Per-outlet ownership is proposed in [ADR 0005](0005-per-outlet-control-modes.md),
+which supersedes the device-wide-only ownership rules below on this branch.
+
 ## Context
 
 Growhub CE scheduling was originally represented as one mode per outlet, such as `timer`, `rh`, `temp`, or `interval`. That shape cannot express common grow-control behavior like a fan that should turn on for a time window, high temperature, or high humidity, while also explaining which condition is currently controlling the outlet.

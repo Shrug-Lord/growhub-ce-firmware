@@ -1,4 +1,5 @@
 #include "webserver.h"
+#include "form_params.h"
 #include "config.h"
 #include "wifi.h"
 #include "mqtt.h"
@@ -33,34 +34,8 @@ static bool s_webserver_running = false;
 // ---------------------------------------------------------------------------
 // Timezone table — friendly name shown to user, POSIX string stored in NVS
 // ---------------------------------------------------------------------------
-static const struct { const char *label; const char *posix; } TZ_TABLE[] = {
-    {"US/Eastern",          "EST5EDT,M3.2.0,M11.1.0"},
-    {"US/Central",          "CST6CDT,M3.2.0,M11.1.0"},
-    {"US/Mountain",         "MST7MDT,M3.2.0,M11.1.0"},
-    {"US/Pacific",          "PST8PDT,M3.2.0,M11.1.0"},
-    {"US/Alaska",           "AKST9AKDT,M3.2.0,M11.1.0"},
-    {"US/Hawaii",           "HST10"},
-    {"UK/London",           "GMT0BST,M3.5.0/1,M10.5.0"},
-    {"Europe/Amsterdam",    "CET-1CEST,M3.5.0,M10.5.0/3"},
-    {"Europe/Berlin",       "CET-1CEST,M3.5.0,M10.5.0/3"},
-    {"Europe/Paris",        "CET-1CEST,M3.5.0,M10.5.0/3"},
-    {"Europe/Madrid",       "CET-1CEST,M3.5.0,M10.5.0/3"},
-    {"Australia/Sydney",    "AEST-10AEDT,M10.1.0,M4.1.0/3"},
-    {"Australia/Perth",     "AWST-8"},
-    {"Asia/Tokyo",          "JST-9"},
-    {"Asia/Singapore",      "SGT-8"},
-    {"UTC",                 "UTC0"},
-};
-#define TZ_COUNT (sizeof(TZ_TABLE) / sizeof(TZ_TABLE[0]))
-
-// ---------------------------------------------------------------------------
-// Outlet device type options
-// ---------------------------------------------------------------------------
-static const char *DEVICE_TYPES[] = {
-    "None", "Light", "Fan", "Humidifier",
-    "Dehumidifier", "Water Pump", "Heater", "AC Controller",
-};
-#define DEVICE_TYPE_COUNT (sizeof(DEVICE_TYPES) / sizeof(DEVICE_TYPES[0]))
+#include "settings_contract.h"
+#include "settings_snapshot.h"
 
 // ---------------------------------------------------------------------------
 // Static page header — CSS + JS (stored in flash, never in RAM)
@@ -226,34 +201,6 @@ static const char PAGE_HEADER[] =
 "</script>"
 "</head><body>"
 "<h1>GrowHub Community Edition</h1>";
-
-// ---------------------------------------------------------------------------
-// URL-decode a query param value — returns true if key found (even if empty)
-// ---------------------------------------------------------------------------
-static bool get_param(const char *query, const char *key, char *val, size_t val_len)
-{
-    if (!query) return false;
-    char search[64];
-    snprintf(search, sizeof(search), "%s=", key);
-    const char *p = strstr(query, search);
-    if (!p) return false;
-    p += strlen(search);
-    size_t i = 0;
-    while (*p && *p != '&' && i < val_len - 1) {
-        if (*p == '+') {
-            val[i++] = ' ';
-        } else if (*p == '%' && p[1] && p[2]) {
-            char hex[3] = {p[1], p[2], 0};
-            val[i++] = (char)strtol(hex, NULL, 16);
-            p += 2;
-        } else {
-            val[i++] = *p;
-        }
-        p++;
-    }
-    val[i] = '\0';
-    return true; // key was present (even if value is empty)
-}
 
 static bool appendf(char *buf, size_t len, int *n, const char *fmt, ...)
 {
@@ -544,7 +491,8 @@ static esp_err_t root_handler(httpd_req_t *req)
         s.temp_valid ? s.humidity : 0.0f, s.light,
         time_str, uptime_str,
         schedule_is_active() ? "Active" : "None",
-        mode == RELAY_MODE_MANUAL ? "MANUAL" : "AUTO");
+        relays_get_manual_mask() == 0x0F ? "MANUAL" :
+        relays_get_manual_mask() ? "MIXED" : "AUTO");
 
     if (time_warning[0]) {
         if (time_blocked) {
@@ -587,48 +535,27 @@ static esp_err_t root_handler(httpd_req_t *req)
     }
     n += snprintf(buf + n, BUF_SIZE - n, "</div>");
 
-    // --- Mode control ---
-    n += snprintf(buf + n, BUF_SIZE - n, "<div class='section'><h2>Control Mode</h2>");
-    if (mode == RELAY_MODE_AUTO) {
+    // --- Per-outlet ownership; bulk controls remain available ---
+    n += snprintf(buf + n, BUF_SIZE - n,
+        "<div class='section'><h2>Control Mode</h2>"
+        "<p>AUTO follows saved schedules. MANUAL lets you switch an outlet independently.</p>"
+        "<form method='GET' action='/save'>"
+        "<button name='mode' value='auto'>All Auto</button>"
+        "<button name='mode' value='manual'>All Manual</button></form>");
+    for (int id = 1; id <= 4; id++) {
+        bool manual = relays_get_outlet_mode(id) == RELAY_MODE_MANUAL;
         n += snprintf(buf + n, BUF_SIZE - n,
-            "<p>Currently in <strong>AUTO</strong> mode -- schedule controls outlets.</p>"
-            "<form method='GET' action='/save'>"
-            "<input type='hidden' name='mode' value='manual'>"
-            "<button type='submit' class='btn-warn'>Switch to Manual</button>"
-            "</form>");
-    } else {
-        n += snprintf(buf + n, BUF_SIZE - n,
-            "<p>Currently in <strong>MANUAL</strong> mode -- you control each outlet.</p>"
-            "<form method='GET' action='/save'>"
-            "<input type='hidden' name='mode' value='auto'>"
-            "<button type='submit'>Switch to Auto</button>"
-            "</form><br>");
-        // Per-outlet ON/OFF buttons
-        // Outlet 1 = bit3, Outlet 2 = bit0, Outlet 3 = bit1, Outlet 4 = bit2
-        struct { int outlet_num; int bit; int on; const char *name; const char *label; } outlets[4] = {
-            {1, 3, o1_on, name_o1, label_o1},
-            {2, 0, o2_on, name_o2, label_o2},
-            {3, 1, o3_on, name_o3, label_o3},
-            {4, 2, o4_on, name_o4, label_o4},
-        };
-        for (int i = 0; i < 4; i++) {
-            char disp[240];
-            outlet_display_name(outlets[i].outlet_num, outlets[i].name,
-                                outlets[i].label, disp, sizeof(disp));
-            uint8_t mask_on  = relay_mask | (1 << outlets[i].bit);
-            uint8_t mask_off = relay_mask & ~(1 << outlets[i].bit);
+            "<form method='GET' action='/save'><strong>%s: %s</strong> "
+            "<input type='hidden' name='control_outlet' value='%d'>"
+            "<button name='outlet_mode' value='%s'>Switch to %s</button>",
+            ost[id - 1].disp, manual ? "MANUAL" : "AUTO", id,
+            manual ? "auto" : "manual", manual ? "Auto" : "Manual");
+        if (manual) {
             n += snprintf(buf + n, BUF_SIZE - n,
-                "<strong>%s:</strong> "
-                "<form style='display:inline' method='GET' action='/save'>"
-                "<input type='hidden' name='relay_mask' value='%d'>"
-                "<button type='submit' class='btn-sm %s'>ON</button></form> "
-                "<form style='display:inline' method='GET' action='/save'>"
-                "<input type='hidden' name='relay_mask' value='%d'>"
-                "<button type='submit' class='btn-sm btn-danger'>OFF</button></form><br>",
-                disp,
-                mask_on, outlets[i].on ? "btn-warn" : "",
-                mask_off);
+                "<button name='outlet_state' value='on'>ON</button>"
+                "<button name='outlet_state' value='off' class='btn-danger'>OFF</button>");
         }
+        n += snprintf(buf + n, BUF_SIZE - n, "</form>");
     }
     n += snprintf(buf + n, BUF_SIZE - n, "</div>");
 
@@ -1127,8 +1054,51 @@ static esp_err_t diagnostics_handler(httpd_req_t *req)
 // ---------------------------------------------------------------------------
 // GET /save -- handle all form submissions
 // ---------------------------------------------------------------------------
+static bool native_api_request(const httpd_req_t *req)
+{
+    return !strncmp(req->uri, "/api/v1/", 8);
+}
+
+static esp_err_t native_ack(httpd_req_t *req, bool restarting)
+{
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    if (restarting) httpd_resp_set_status(req, "202 Accepted");
+    return httpd_resp_sendstr(req, restarting
+        ? "{\"api\":1,\"accepted\":true,\"restarting\":true}"
+        : "{\"api\":1,\"accepted\":true,\"restarting\":false}");
+}
+
+static esp_err_t settings_handler(httpd_req_t *req)
+{
+    outlet_sched_t outlets[MAX_OUTLET_SCHEDS];
+    int count = schedule_get_outlets(outlets, MAX_OUTLET_SCHEDS);
+    char *json = settings_snapshot_json(config_get(), outlets, count,
+                                       config_get_mac_str(), GROWHUB_VERSION);
+    if (!json) return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    esp_err_t result = httpd_resp_sendstr(req, json);
+    free(json);
+    return result;
+}
+
 static esp_err_t save_handler(httpd_req_t *req)
 {
+    const bool native = native_api_request(req);
+    if (native) {
+        char content_type[96];
+        const char *form_type = "application/x-www-form-urlencoded";
+        if (httpd_req_get_hdr_value_str(req, "Content-Type", content_type, sizeof(content_type)) != ESP_OK ||
+            strncmp(content_type, form_type, strlen(form_type))) {
+            return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Use application/x-www-form-urlencoded settings");
+        }
+        char expected[32];
+        if (httpd_req_get_hdr_value_str(req, "X-Growhub-ID", expected, sizeof(expected)) != ESP_OK ||
+            strcmp(expected, config_get_mac_str())) {
+            return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Growhub identity does not match");
+        }
+    }
     char *query = calloc(1, SAVE_PARAM_MAX);
     char val[128] = {0};
     bool need_reboot = false;
@@ -1146,16 +1116,41 @@ static esp_err_t save_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    // --- Mode toggle ---
+    // --- Bulk mode toggle ---
     if (get_param(query, "mode", val, sizeof(val))) {
         if (strcmp(val, "manual") == 0) {
             relays_set_mode(RELAY_MODE_MANUAL);
+            schedule_evaluate_now();
             mqtt_publish_schedule_state("local");
         } else if (strcmp(val, "auto") == 0) {
             relays_set_mode(RELAY_MODE_AUTO);
             schedule_evaluate_now();
             mqtt_publish_schedule_state("local");
         }
+    }
+
+    // Targeted commands never write a stale full-device relay mask.
+    if (get_param(query, "control_outlet", val, sizeof(val))) {
+        int id = strlen(val) == 1 && val[0] >= '1' && val[0] <= '4' ? val[0] - '0' : 0;
+        bool ok = false;
+        if (get_param(query, "outlet_mode", val, sizeof(val))) {
+            if (!strcmp(val, "manual") || !strcmp(val, "auto")) {
+                ok = relays_set_outlet_mode(id, !strcmp(val, "manual")
+                    ? RELAY_MODE_MANUAL : RELAY_MODE_AUTO);
+            }
+        } else if (get_param(query, "outlet_state", val, sizeof(val))) {
+            if (!strcmp(val, "on") || !strcmp(val, "off")) {
+                ok = relays_set_outlet(id, !strcmp(val, "on"));
+            }
+        }
+        if (!ok) {
+            free(query);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                                "Invalid outlet command; ON/OFF requires MANUAL for that outlet");
+            return ESP_FAIL;
+        }
+        schedule_evaluate_now();
+        mqtt_publish_schedule_state("local");
     }
 
     // --- Manual relay bitmask ---
@@ -1320,6 +1315,7 @@ static esp_err_t save_handler(httpd_req_t *req)
         if (sched_overflow) {
             ESP_LOGW(TAG, "Local schedule rejected: generated payload too large");
             mqtt_publish_schedule_error("invalid_payload", 0, "local schedule too large");
+            if (native) { free(sched); free(query); return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Schedule too large"); }
         } else if (!any_sched) {
             config_save_schedule_disabled_mask(disabled_mask);
             schedule_clear();
@@ -1341,6 +1337,7 @@ static esp_err_t save_handler(httpd_req_t *req)
                          schedule_last_error_reason(), schedule_last_error_outlet());
                 mqtt_publish_schedule_error(schedule_last_error_reason(),
                                             schedule_last_error_outlet(), NULL);
+                if (native) { free(sched); free(query); return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid schedule"); }
             }
         }
 
@@ -1370,6 +1367,7 @@ static esp_err_t save_handler(httpd_req_t *req)
     // --- Forget WiFi ---
     if (get_param(query, "wifi_forget", val, sizeof(val))) {
         wifi_exit_recovery_mode(true);  // clears credentials, cancels recovery
+        if (native) { free(query); return native_ack(req, false); }
         httpd_resp_set_status(req, "302 Found");
         httpd_resp_set_hdr(req, "Location", "/");
         httpd_resp_send(req, NULL, 0);
@@ -1381,6 +1379,7 @@ static esp_err_t save_handler(httpd_req_t *req)
     if (get_param(query, "cc_disconnect", val, sizeof(val))) {
         config_save_mqtt_disabled(true);
         mqtt_stop();
+        if (native) { free(query); return native_ack(req, false); }
         httpd_resp_set_status(req, "302 Found");
         httpd_resp_set_hdr(req, "Location", "/");
         httpd_resp_send(req, NULL, 0);
@@ -1520,6 +1519,7 @@ static esp_err_t save_handler(httpd_req_t *req)
             httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "OTA already in progress or URL is invalid");
             return ESP_FAIL;
         }
+        if (native) { free(query); return native_ack(req, true); }
         httpd_resp_set_type(req, "text/html");
         httpd_resp_sendstr(req,
             "<!DOCTYPE html><html><head><meta charset='utf-8'>"
@@ -1612,6 +1612,10 @@ static esp_err_t save_handler(httpd_req_t *req)
 
     // --- Reboot ---
     if (get_param(query, "reboot", val, sizeof(val))) {
+        if (native) {
+            native_ack(req, true); free(query);
+            vTaskDelay(pdMS_TO_TICKS(500)); esp_restart(); return ESP_OK;
+        }
         httpd_resp_set_type(req, "text/html");
         httpd_resp_sendstr(req,
             "<html><body style='background:#1a1a2e;color:#e0e0e0;"
@@ -1627,6 +1631,14 @@ static esp_err_t save_handler(httpd_req_t *req)
 
     // --- Factory reset ---
     if (get_param(query, "reset", val, sizeof(val))) {
+        if (native && !config_get()->operation_led_enabled) {
+            free(query);
+            return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Factory reset would remove the operation LED hardware override");
+        }
+        if (native) {
+            native_ack(req, true); free(query);
+            vTaskDelay(pdMS_TO_TICKS(500)); config_factory_reset(); return ESP_OK;
+        }
         httpd_resp_set_type(req, "text/html");
         httpd_resp_sendstr(req,
             "<html><body style='background:#1a1a2e;color:#e0e0e0;"
@@ -1640,7 +1652,11 @@ static esp_err_t save_handler(httpd_req_t *req)
         return ESP_OK;
     }
 
-    if (ap_preference_disabled && wifi_is_connected() && wifi_get_sta_ip()[0]) {
+    if (native) {
+        native_ack(req, need_reboot);
+        free(query);
+        if (need_reboot) { vTaskDelay(pdMS_TO_TICKS(1000)); esp_restart(); }
+    } else if (ap_preference_disabled && wifi_is_connected() && wifi_get_sta_ip()[0]) {
         char page[1024];
         const char *ip = wifi_get_sta_ip();
         snprintf(page, sizeof(page),
@@ -1736,24 +1752,22 @@ static esp_err_t scan_handler(httpd_req_t *req)
         aps[j+1] = tmp;
     }
 
-    char *rbuf = malloc(count * 80 + 4);
-    if (!rbuf) { free(aps); httpd_resp_send_500(req); return ESP_FAIL; }
-
-    int rn = 0;
-    rbuf[rn++] = '[';
+    cJSON *networks = cJSON_CreateArray();
+    if (!networks) { free(aps); httpd_resp_send_500(req); return ESP_FAIL; }
     for (int i = 0; i < count; i++) {
-        if (i > 0) rbuf[rn++] = ',';
-        rn += snprintf(rbuf + rn, count * 80 - rn,
-            "{\"ssid\":\"%s\",\"rssi\":%d}",
-            (char *)aps[i].ssid, aps[i].rssi);
+        cJSON *network = cJSON_CreateObject();
+        if (!network) { cJSON_Delete(networks); free(aps); httpd_resp_send_500(req); return ESP_FAIL; }
+        cJSON_AddStringToObject(network, "ssid", (char *)aps[i].ssid);
+        cJSON_AddNumberToObject(network, "rssi", aps[i].rssi);
+        cJSON_AddItemToArray(networks, network);
     }
-    rbuf[rn++] = ']';
-    rbuf[rn] = '\0';
-
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_send(req, rbuf, rn);
-    free(rbuf);
     free(aps);
+    char *rbuf = cJSON_PrintUnformatted(networks);
+    cJSON_Delete(networks);
+    if (!rbuf) { httpd_resp_send_500(req); return ESP_FAIL; }
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, rbuf);
+    free(rbuf);
     return ESP_OK;
 }
 
@@ -1937,6 +1951,8 @@ static esp_err_t status_handler(httpd_req_t *req)
     cJSON_AddNumberToObject(root, "temp", temp_display);
     cJSON_AddNumberToObject(root, "rh", s.temp_valid ? s.humidity : 0.0f);
     cJSON_AddNumberToObject(root, "co2", s.co2_valid ? s.co2 : 0);
+    cJSON_AddBoolToObject(root, "co2_valid", s.co2_valid);
+    cJSON_AddBoolToObject(root, "temp_valid", s.temp_valid);
     cJSON_AddNumberToObject(root, "light", s.light);
     char unit[2] = { cfg->temp_unit == 1 ? 'F' : 'C', '\0' };
     cJSON_AddStringToObject(root, "unit", unit);
@@ -1989,6 +2005,7 @@ static esp_err_t status_handler(httpd_req_t *req)
     }
     cJSON_AddStringToObject(root, "mode",
                             relays_get_mode() == RELAY_MODE_MANUAL ? "manual" : "auto");
+    cJSON_AddNumberToObject(root, "manual_mask", relays_get_manual_mask());
     cJSON_AddStringToObject(root, "name", cfg->device_name);
 
     cJSON *outlet_status = cJSON_CreateArray();
@@ -1999,6 +2016,8 @@ static esp_err_t status_handler(httpd_req_t *req)
             if (!item) continue;
             int bit = id == 1 ? 3 : id - 2;
             cJSON_AddNumberToObject(item, "id", id);
+            cJSON_AddStringToObject(item, "mode",
+                relays_get_outlet_mode(id) == RELAY_MODE_MANUAL ? "manual" : "auto");
             cJSON_AddStringToObject(item, "state", ((relay_mask >> bit) & 1) ? "on" : "off");
             cJSON_AddStringToObject(item, "summary", schedule_get_outlet_summary(id));
             cJSON_AddItemToArray(outlet_status, item);
@@ -2052,7 +2071,7 @@ void webserver_init(void)
 {
     httpd_config_t http_cfg = HTTPD_DEFAULT_CONFIG();
     http_cfg.uri_match_fn = httpd_uri_match_wildcard;
-    http_cfg.max_uri_handlers = 12;
+    http_cfg.max_uri_handlers = 16;
     http_cfg.stack_size = 8192;
     // ESP32 has 10 lwIP sockets total. Keep headroom for MQTT, DNS, and OTA,
     // and evict an idle browser session instead of wedging the HTTP listener.
@@ -2067,6 +2086,9 @@ void webserver_init(void)
     }
 
     httpd_uri_t uris[] = {
+        {.uri="/api/v1/settings", .method=HTTP_GET, .handler=settings_handler},
+        {.uri="/api/v1/settings", .method=HTTP_POST, .handler=save_handler},
+        {.uri="/api/v1/status", .method=HTTP_GET, .handler=status_handler},
         {.uri="/updates", .method=HTTP_GET, .handler=update_handler},
         {.uri="/updates", .method=HTTP_POST, .handler=update_handler},
         {.uri="/update_ui.js", .method=HTTP_GET, .handler=update_js_handler},

@@ -7,6 +7,19 @@ on:
     branches: [main]
 
 jobs:
+  ios:
+    name: iOS companion build and core tests
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+      - name: Test native and legacy controller protocols
+        working-directory: ios/GrowhubRemote
+        run: swift test
+      - name: Build iPhone and iPad app
+        working-directory: ios/GrowhubRemote
+        run: xcodebuild build -project GrowhubRemote.xcodeproj -scheme GrowhubRemote -destination 'generic/platform=iOS Simulator' -configuration Debug CODE_SIGNING_ALLOWED=NO
+
   build:
     name: PlatformIO build
     runs-on: ubuntu-latest
@@ -38,6 +51,15 @@ jobs:
 
       - name: Build CE firmware and verify first-flash package
         run: PIO_BIN=pio scripts/build-verified-firmware.sh
+
+      - name: Test independent outlet ownership and scheduling
+        run: scripts/test-outlet-control.sh
+
+      - name: Test native settings API snapshots
+        run: scripts/test-settings-api.sh
+
+      - name: Test exact HTTP form parameter matching
+        run: scripts/test-http-params.sh
 
       - name: Verify frozen release hashes when present
         run: |

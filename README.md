@@ -5,6 +5,17 @@ controllers.
 
 Growhub CE keeps Growhub hardware usable after Niwa's cloud shutdown. Once installed, the controller runs locally over WiFi with a built-in web UI. MQTT is optional.
 
+## Proposed independent outlet control
+
+This branch adds a saved AUTO/MANUAL mode for each outlet. Use the Control Mode
+section to choose each outlet's mode and switch manual outlets ON/OFF while the
+others follow schedules. All Auto and All Manual remain available.
+See [ADR 0005](docs/adr/0005-per-outlet-control-modes.md) for compatibility and
+verification status. CE-to-CE OTA, native reboot, settings preservation and
+independent outlet modes have been checked on physical hardware; the controller
+owner has confirmed hardware validation complete. See the
+[validation record](docs/VALIDATION-v1.2.5C.md) for the evidence.
+
 ## Install CE Firmware
 
 Start here if you just want to put CE firmware on your Growhub:
@@ -48,8 +59,12 @@ Current CE firmware supports:
 The current release firmware and initial Command Center compatibility baseline
 is `1.1.0C`.
 
-Development builds are versioned `1.2.0C` and add automatic MQTT reporting of the
-device's management address. See the [v1.2.0C development notes](docs/RELEASE-NOTES-v1.2.0C.md).
+The proposed development candidate is `1.2.5C`: independent outlet modes, an
+additive [local settings API](docs/HTTP-API.md), and the native
+[Growhub Remote iOS companion](ios/GrowhubRemote/README.md). It preserves the
+existing web/MQTT interfaces and earlier CE app compatibility. It is not a
+published firmware release; physical relay/reboot/OTA acceptance remains pending.
+See [candidate notes](docs/RELEASE-NOTES-v1.2.5C.md).
 
 Known limitations:
 

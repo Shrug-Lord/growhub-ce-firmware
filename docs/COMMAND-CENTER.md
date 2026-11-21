@@ -757,3 +757,13 @@ with no unchecked evidence items before the release gate is considered closed.
 
 The firmware does not store the Command Center URL, so the local device UI does
 not currently offer an **Open Command Center** link.
+
+## Proposed independent outlet modes
+
+The per-outlet control proposal is documented in
+[ADR 0005](adr/0005-per-outlet-control-modes.md) and the
+[MQTT extension](MQTT.md#proposed-per-outlet-ownership-extension).
+Clients should use `outlet_status[].mode` to render ownership and the additive
+`control/outlet` command to change one outlet. Legacy top-level `mode` is `auto`
+for mixed ownership; existing bulk mode controls still change all four outlets.
+This firmware proposal does not add the corresponding Command Center UI.

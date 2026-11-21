@@ -1,0 +1,508 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		13525D77753166352C5F0252 /* CompactHubHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04315FA7250D533C080AB8DE /* CompactHubHeader.swift */; };
+		197C23B32EC72CFC60C1BA2D /* NativeControllerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4D9D3C28A3F4823114C7190 /* NativeControllerView.swift */; };
+		1B9D683739994A9ABEDAE5FB /* GrowhubCore in Frameworks */ = {isa = PBXBuildFile; productRef = 76416A0D719738E0F50B9310 /* GrowhubCore */; };
+		283A4D38A6F1E3734F21D2F9 /* SwiftSoup-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = BBA2D1F1873B08F66BF49E14 /* SwiftSoup-LICENSE.txt */; };
+		3AC776256949AB2E038451BA /* GrowhubRemoteApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72E068A8C415A0A041D7EDD1 /* GrowhubRemoteApp.swift */; };
+		57045A3B40209172C83B4B44 /* ReleaseJourneyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62FDC586AA76846876137B90 /* ReleaseJourneyTests.swift */; };
+		57B73E86545F18244CFDDD2E /* NativeMaintenanceViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EB5CB9FE5F99018D2F5218D /* NativeMaintenanceViews.swift */; };
+		7198A1EE6659CA79F58C25CC /* BonjourDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A2FBF57A361850246EEAC4B /* BonjourDiscovery.swift */; };
+		823F2491966DCD6F96959DA0 /* HubList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FA0DF97F952C268C6DCB25D /* HubList.swift */; };
+		B47E6CC04A984F6D53FCDA1C /* HubDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = A920726AEC026AE64A28C07C /* HubDetail.swift */; };
+		C2FF7873B6CE612E9D74F43A /* NativeControllerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 228AB9D7A6B904AF4EEF03A1 /* NativeControllerModel.swift */; };
+		C981ACE0E28CE2A19025EE58 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2E3AFFEADADEA794550AC7B7 /* Assets.xcassets */; };
+		CC5795B66D0BAD0B67DF9FD6 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = AC3B955A2C6BC433AC67BED2 /* PrivacyInfo.xcprivacy */; };
+		F83828A1817FA3B6198C706F /* HubStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEF607EBFEFE1475BE4391B9 /* HubStore.swift */; };
+		FC97A48D91886A65915FCA02 /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B745D4CB3A86D5641C535DC /* AboutView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		813B20E5A82804762854CF69 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6B413697E9314E4944B3C250 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D780DA82F69FF3B0E94304EF;
+			remoteInfo = GrowhubRemote;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		04315FA7250D533C080AB8DE /* CompactHubHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompactHubHeader.swift; sourceTree = "<group>"; };
+		1C7B48026D7693B86CA4667D /* GrowhubRemoteUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = GrowhubRemoteUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		1EB5CB9FE5F99018D2F5218D /* NativeMaintenanceViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMaintenanceViews.swift; sourceTree = "<group>"; };
+		228AB9D7A6B904AF4EEF03A1 /* NativeControllerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeControllerModel.swift; sourceTree = "<group>"; };
+		2E3AFFEADADEA794550AC7B7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		5A2FBF57A361850246EEAC4B /* BonjourDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BonjourDiscovery.swift; sourceTree = "<group>"; };
+		62FDC586AA76846876137B90 /* ReleaseJourneyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReleaseJourneyTests.swift; sourceTree = "<group>"; };
+		6B745D4CB3A86D5641C535DC /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
+		6D45B6F6EEB1CEFFDF8AFDF0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		72E068A8C415A0A041D7EDD1 /* GrowhubRemoteApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrowhubRemoteApp.swift; sourceTree = "<group>"; };
+		7FA0DF97F952C268C6DCB25D /* HubList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HubList.swift; sourceTree = "<group>"; };
+		95A083D88D9EA798CD0D0BE0 /* GrowhubRemote */ = {isa = PBXFileReference; lastKnownFileType = folder; name = GrowhubRemote; path = .; sourceTree = SOURCE_ROOT; };
+		A4D9D3C28A3F4823114C7190 /* NativeControllerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeControllerView.swift; sourceTree = "<group>"; };
+		A920726AEC026AE64A28C07C /* HubDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HubDetail.swift; sourceTree = "<group>"; };
+		AC3B955A2C6BC433AC67BED2 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		B2D38FA9CD24D41DA9858D5D /* GrowhubRemote.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = GrowhubRemote.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BBA2D1F1873B08F66BF49E14 /* SwiftSoup-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "SwiftSoup-LICENSE.txt"; sourceTree = "<group>"; };
+		EEF607EBFEFE1475BE4391B9 /* HubStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HubStore.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		9723C6D0508E68676CFBD999 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1B9D683739994A9ABEDAE5FB /* GrowhubCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		22B27FDB58A07F5A9719D92D /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B2D38FA9CD24D41DA9858D5D /* GrowhubRemote.app */,
+				1C7B48026D7693B86CA4667D /* GrowhubRemoteUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		37EDEC065DF24EA4576D5FCB /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				95A083D88D9EA798CD0D0BE0 /* GrowhubRemote */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		471327AB5DEE535105D0D6A6 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				6B745D4CB3A86D5641C535DC /* AboutView.swift */,
+				2E3AFFEADADEA794550AC7B7 /* Assets.xcassets */,
+				5A2FBF57A361850246EEAC4B /* BonjourDiscovery.swift */,
+				04315FA7250D533C080AB8DE /* CompactHubHeader.swift */,
+				72E068A8C415A0A041D7EDD1 /* GrowhubRemoteApp.swift */,
+				A920726AEC026AE64A28C07C /* HubDetail.swift */,
+				7FA0DF97F952C268C6DCB25D /* HubList.swift */,
+				EEF607EBFEFE1475BE4391B9 /* HubStore.swift */,
+				6D45B6F6EEB1CEFFDF8AFDF0 /* Info.plist */,
+				228AB9D7A6B904AF4EEF03A1 /* NativeControllerModel.swift */,
+				A4D9D3C28A3F4823114C7190 /* NativeControllerView.swift */,
+				1EB5CB9FE5F99018D2F5218D /* NativeMaintenanceViews.swift */,
+				AC3B955A2C6BC433AC67BED2 /* PrivacyInfo.xcprivacy */,
+				64F88728C194D0F6E856BD7E /* Resources */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		64F88728C194D0F6E856BD7E /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				BBA2D1F1873B08F66BF49E14 /* SwiftSoup-LICENSE.txt */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		D236B517887F993327A2F378 /* UITests */ = {
+			isa = PBXGroup;
+			children = (
+				62FDC586AA76846876137B90 /* ReleaseJourneyTests.swift */,
+			);
+			path = UITests;
+			sourceTree = "<group>";
+		};
+		E687A60BC213DD4AA05A1CD2 = {
+			isa = PBXGroup;
+			children = (
+				471327AB5DEE535105D0D6A6 /* App */,
+				37EDEC065DF24EA4576D5FCB /* Packages */,
+				D236B517887F993327A2F378 /* UITests */,
+				22B27FDB58A07F5A9719D92D /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		4E857E2DEABEB107E8FE45EA /* GrowhubRemoteUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B08D1BDE9E0553C72CF99E31 /* Build configuration list for PBXNativeTarget "GrowhubRemoteUITests" */;
+			buildPhases = (
+				0A797DB2F95A61CC0DEC0E6C /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				885A652409DDBA2ADB8CB42A /* PBXTargetDependency */,
+			);
+			name = GrowhubRemoteUITests;
+			packageProductDependencies = (
+			);
+			productName = GrowhubRemoteUITests;
+			productReference = 1C7B48026D7693B86CA4667D /* GrowhubRemoteUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		D780DA82F69FF3B0E94304EF /* GrowhubRemote */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 38AFB013503C4C4C0F2F3DAF /* Build configuration list for PBXNativeTarget "GrowhubRemote" */;
+			buildPhases = (
+				9DCA8AC8046F259141F1EED4 /* Sources */,
+				0030E1EBAAB3B229367B137E /* Resources */,
+				9723C6D0508E68676CFBD999 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = GrowhubRemote;
+			packageProductDependencies = (
+				76416A0D719738E0F50B9310 /* GrowhubCore */,
+			);
+			productName = GrowhubRemote;
+			productReference = B2D38FA9CD24D41DA9858D5D /* GrowhubRemote.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		6B413697E9314E4944B3C250 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					4E857E2DEABEB107E8FE45EA = {
+						ProvisioningStyle = Automatic;
+						TestTargetID = D780DA82F69FF3B0E94304EF;
+					};
+					D780DA82F69FF3B0E94304EF = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 550508987D534811590193CB /* Build configuration list for PBXProject "GrowhubRemote" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = E687A60BC213DD4AA05A1CD2;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				01ADFAD003CDDA7641BBE483 /* XCLocalSwiftPackageReference "." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 22B27FDB58A07F5A9719D92D /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				D780DA82F69FF3B0E94304EF /* GrowhubRemote */,
+				4E857E2DEABEB107E8FE45EA /* GrowhubRemoteUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		0030E1EBAAB3B229367B137E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C981ACE0E28CE2A19025EE58 /* Assets.xcassets in Resources */,
+				CC5795B66D0BAD0B67DF9FD6 /* PrivacyInfo.xcprivacy in Resources */,
+				283A4D38A6F1E3734F21D2F9 /* SwiftSoup-LICENSE.txt in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0A797DB2F95A61CC0DEC0E6C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				57045A3B40209172C83B4B44 /* ReleaseJourneyTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9DCA8AC8046F259141F1EED4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FC97A48D91886A65915FCA02 /* AboutView.swift in Sources */,
+				7198A1EE6659CA79F58C25CC /* BonjourDiscovery.swift in Sources */,
+				13525D77753166352C5F0252 /* CompactHubHeader.swift in Sources */,
+				3AC776256949AB2E038451BA /* GrowhubRemoteApp.swift in Sources */,
+				B47E6CC04A984F6D53FCDA1C /* HubDetail.swift in Sources */,
+				823F2491966DCD6F96959DA0 /* HubList.swift in Sources */,
+				F83828A1817FA3B6198C706F /* HubStore.swift in Sources */,
+				C2FF7873B6CE612E9D74F43A /* NativeControllerModel.swift in Sources */,
+				197C23B32EC72CFC60C1BA2D /* NativeControllerView.swift in Sources */,
+				57B73E86545F18244CFDDD2E /* NativeMaintenanceViews.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		885A652409DDBA2ADB8CB42A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D780DA82F69FF3B0E94304EF /* GrowhubRemote */;
+			targetProxy = 813B20E5A82804762854CF69 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		1C532150957693FCEFD4FDD9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 6;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		2C0B75B00D414CCB0FFAA161 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.deep6.growhubremote;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		4AAFFD05B64D4090BCC627B9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 6;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		63765B9B9D7F83FDE3C0D8B1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.deep6.growhubremote;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		AB6C0B20C3124A5FBF10CE19 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.deep6.growhubremote.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = GrowhubRemote;
+			};
+			name = Release;
+		};
+		E53762CAD1C689EE69F6DCBF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.deep6.growhubremote.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = GrowhubRemote;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		38AFB013503C4C4C0F2F3DAF /* Build configuration list for PBXNativeTarget "GrowhubRemote" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2C0B75B00D414CCB0FFAA161 /* Debug */,
+				63765B9B9D7F83FDE3C0D8B1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		550508987D534811590193CB /* Build configuration list for PBXProject "GrowhubRemote" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4AAFFD05B64D4090BCC627B9 /* Debug */,
+				1C532150957693FCEFD4FDD9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B08D1BDE9E0553C72CF99E31 /* Build configuration list for PBXNativeTarget "GrowhubRemoteUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E53762CAD1C689EE69F6DCBF /* Debug */,
+				AB6C0B20C3124A5FBF10CE19 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		01ADFAD003CDDA7641BBE483 /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		76416A0D719738E0F50B9310 /* GrowhubCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = GrowhubCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 6B413697E9314E4944B3C250 /* Project object */;
+}

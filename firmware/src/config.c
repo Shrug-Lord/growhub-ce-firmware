@@ -71,6 +71,7 @@ static void load_defaults(void)
 
     // Relay mode — AUTO on first boot
     s_config.relay_mode = 0;
+    s_config.relay_manual_mask = 0;
 
     // Local schedule pause mask. Saved outlet rules are enabled by default.
     s_config.schedule_disabled_mask = 0;
@@ -138,6 +139,10 @@ static void load_from_nvs(void)
     nvs_read_u8(h, "report_s",    &s_config.report_interval_s);
     nvs_read_u8(h, "mqtt_dis",    &s_config.mqtt_disabled);
     nvs_read_u8(h, "relay_mode",  &s_config.relay_mode);
+    // Missing key migrates the previous device-wide mode without changing ownership.
+    s_config.relay_manual_mask = s_config.relay_mode == 1 ? 0x0F : 0;
+    nvs_read_u8(h, "relay_manual", &s_config.relay_manual_mask);
+    s_config.relay_manual_mask &= 0x0F;
     nvs_read_u8(h, "sched_dis",   &s_config.schedule_disabled_mask);
 
     // Float calibration offsets stored as int16 * 100
@@ -574,16 +579,19 @@ void config_save_calibration(float temp_off, float rh_off)
     }
 }
 
-void config_save_relay_mode(uint8_t mode)
+void config_save_relay_manual_mask(uint8_t mask)
 {
-    s_config.relay_mode = mode;
+    s_config.relay_manual_mask = mask & 0x0F;
+    // A downgrade restores MANUAL for mixed ownership, rather than unexpectedly
+    // allowing the old schedule engine to drive manually controlled equipment.
+    s_config.relay_mode = mask ? 1 : 0;
 
     nvs_handle_t h;
     if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u8(h, "relay_manual", s_config.relay_manual_mask);
         nvs_set_u8(h, "relay_mode", s_config.relay_mode);
         nvs_commit(h);
         nvs_close(h);
-        ESP_LOGI(TAG, "Relay mode saved: %s", mode ? "MANUAL" : "AUTO");
     }
 }
 

@@ -707,7 +707,7 @@ int schedule_get_outlets(outlet_sched_t *out, int max)
 const char *schedule_get_outlet_summary(int outlet_id)
 {
     static const char *empty = "";
-    if (relays_get_mode() != RELAY_MODE_AUTO) return empty;
+    if (relays_get_outlet_mode(outlet_id) != RELAY_MODE_AUTO) return empty;
     if (outlet_id < 1 || outlet_id > 4) return empty;
     if (outlet_schedule_disabled(outlet_id)) return empty;
     return s_summaries[outlet_id - 1];
@@ -1021,9 +1021,18 @@ static bool schedule_evaluate_once(void)
     memcpy(old_summaries, s_summaries, sizeof(old_summaries));
     s_sntp_unhealthy = time_sync_sntp_unhealthy();
 
+    // Do not resume an old timed run or hysteresis latch after manual takeover.
+    for (int i = 0; i < s_outlet_count; i++) {
+        if (relays_get_outlet_mode(s_outlets[i].id) == RELAY_MODE_MANUAL) {
+            memset(s_condition_active[i], 0, sizeof(s_condition_active[i]));
+            s_interval[i].run_active = false;
+        }
+    }
+
     if (!auto_mode) {
         memset(s_summaries, 0, sizeof(s_summaries));
         s_time_sync_required = false;
+        s_sensor_data_unavailable = false;
         return old_time_sync_required ||
                old_sntp_unhealthy != s_sntp_unhealthy ||
                memcmp(old_summaries, s_summaries, sizeof(s_summaries)) != 0;
@@ -1049,7 +1058,8 @@ static bool schedule_evaluate_once(void)
         bool outlet_needs_time = false;
         bool outlet_needs_sensor = false;
 
-        if (outlet_schedule_disabled(s_outlets[i].id)) {
+        if (outlet_schedule_disabled(s_outlets[i].id) ||
+            relays_get_outlet_mode(s_outlets[i].id) != RELAY_MODE_AUTO) {
             continue;
         }
 
@@ -1080,11 +1090,7 @@ static bool schedule_evaluate_once(void)
         }
     }
 
-    uint8_t old_mask = relays_get_bitmask();
-    bool relay_changed = (old_mask & 0x0F) != new_mask;
-    if (relay_changed) {
-        relays_set_bitmask(new_mask);
-    }
+    bool relay_changed = relays_set_auto_bitmask(new_mask);
 
     bool summary_changed = memcmp(old_summaries, s_summaries, sizeof(s_summaries)) != 0;
     bool time_changed = old_time_sync_required != s_time_sync_required;
@@ -1141,7 +1147,7 @@ bool schedule_pump_is_running(int outlet_id)
 
 bool schedule_pump_run_now_allowed(int outlet_id)
 {
-    if (relays_get_mode() != RELAY_MODE_AUTO) return false;
+    if (relays_get_outlet_mode(outlet_id) != RELAY_MODE_AUTO) return false;
     if (outlet_schedule_disabled(outlet_id)) return false;
 
     for (int i = 0; i < s_outlet_count; i++) {

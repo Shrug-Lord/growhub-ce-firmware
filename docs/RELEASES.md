@@ -15,19 +15,14 @@ than strict Semantic Versioning syntax; compatibility meaning follows
 - next major, for example `2.0.0C`: intentionally incompatible public MQTT,
   schedule, configuration, OTA, or documented behavior changes
 
-The amount of code changed does not determine the version. A release version
-may accumulate features and fixes until its scope is frozen, but published tag
-contents are immutable. `1.1.0C` is the current firmware release and initial
-Command Center compatibility baseline. Further compatible feature work belongs
-in `1.2.0C`; post-release fixes belong in `1.1.1C`.
-
-The current release-candidate firmware is `1.2.0C`, including the optional retained
-MQTT management-address report described in the
-[development release notes](RELEASE-NOTES-v1.2.0C.md). Its release artifacts have
-frozen Linux CI hashes but are not yet published. Both `GROWHUB_VERSION` in
-`firmware/platformio.ini` and `CONFIG_APP_PROJECT_VER` in
-`firmware/sdkconfig.growhub` must match the intended firmware version; building
-does not increment either value automatically.
+The amount of code changed does not determine the version. Published tag
+contents are immutable. The independent outlet-control proposal uses development
+version `1.2.5C` so it cannot be confused with the frozen `1.2.0C` artifacts.
+Hardware validation is complete for the tested candidate; it is not yet a
+published upstream release. See [ADR 0005](adr/0005-per-outlet-control-modes.md)
+and the [validation record](VALIDATION-v1.2.5C.md) for scope and completed checks.
+Both `GROWHUB_VERSION` in `firmware/platformio.ini` and `CONFIG_APP_PROJECT_VER`
+in `firmware/sdkconfig.growhub` must match; building does not increment them.
 
 Command Center is versioned separately. Its first planned release is `v0.1.0`
 and records the exact CE firmware commit and `1.1.0C` compatibility evidence.
